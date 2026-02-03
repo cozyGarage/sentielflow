@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  sentinelflow:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sentinelflow/sentinelflow:latest
+    container_name: sentinelflow
+    volumes:
+      # Mount current directory as workspace
+      - .:/workspace
+      # Mount git config for git metadata
+      - ~/.gitconfig:/home/sentinelflow/.gitconfig:ro
+    working_dir: /workspace
+    command: scan --all --verbose
+    environment:
+      # Optional: Add API keys for vulnerability databases
+      - NVD_API_KEY=${NVD_API_KEY:-}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+
+  # Scan and generate SARIF report
+  scan-sarif:
+    image: sentinelflow/sentinelflow:latest
+    volumes:
+      - .:/workspace
+    working_dir: /workspace
+    command: scan --all --format sarif -o /workspace/report.sarif
+
+  # Scan and generate HTML report
+  scan-html:
+    image: sentinelflow/sentinelflow:latest
+    volumes:
+      - .:/workspace
+    working_dir: /workspace
+    command: scan --all --format html -o /workspace/report.html
+
+  # Scan and generate Markdown report
+  scan-markdown:
+    image: sentinelflow/sentinelflow:latest
+    volumes:
+      - .:/workspace
+    working_dir: /workspace
+    command: scan --all --format markdown -o /workspace/report.md
+
+  # Run with custom config
+  scan-custom:
+    image: sentinelflow/sentinelflow:latest
+    volumes:
+      - .:/workspace
+      - ./custom-config.yml:/config/config.yml:ro
+    working_dir: /workspace
+    command: scan --config /config/config.yml --all

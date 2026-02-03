@@ -1,0 +1,49 @@
+# Build artifacts
+*.exe
+sentinelflow
+dist/
+build/
+
+# Go
+vendor/
+*.test
+*.out
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage.txt
+*.coverprofile
+
+# Temporary files
+tmp/
+temp/
+
+# Git
+.git/
+.gitignore
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Development
+examples/
+test/
+scripts/
+
+# Config
+.sentinelflow/
