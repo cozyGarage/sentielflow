@@ -1,0 +1,249 @@
+package cli
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"time"
+
+	"github.com/fatih/color"
+	"github.com/spf13/cobra"
+
+	"github.com/cozygarage/sentinelflow/internal/config"
+	"github.com/cozygarage/sentinelflow/internal/reporter"
+	"github.com/cozygarage/sentinelflow/internal/scanner"
+	"github.com/cozygarage/sentinelflow/pkg/api"
+)
+
+var (
+	scanSecrets      bool
+	scanIaC          bool
+	scanDependencies bool
+	scanAI           bool
+	scanAll          bool
+	scanPath         string
+	outputFile       string
+	failOnSeverity   string
+)
+
+var scanCmd = &cobra.Command{
+	Use:   "scan [path]",
+	Short: "Scan for security vulnerabilities",
+	Long: `Perform security scanning on the specified path or current directory.
+
+Available scanners:
+  --secrets      Scan for leaked secrets and API keys
+  --iac          Scan Infrastructure-as-Code files
+  --deps         Scan dependencies for vulnerabilities
+  --ai           AI-powered code security review
+  --all          Enable all scanners
+
+Examples:
+  sentinelflow scan
+  sentinelflow scan ./src --secrets --iac
+  sentinelflow scan --all --format sarif -o report.sarif
+  sentinelflow scan --fail-on high`,
+	RunE: runScan,
+}
+
+func init() {
+	scanCmd.Flags().BoolVar(&scanSecrets, "secrets", false, "scan for secrets")
+	scanCmd.Flags().BoolVar(&scanIaC, "iac", false, "scan Infrastructure-as-Code")
+	scanCmd.Flags().BoolVar(&scanDependencies, "deps", false, "scan dependencies")
+	scanCmd.Flags().BoolVar(&scanAI, "ai", false, "AI-powered code review")
+	scanCmd.Flags().BoolVar(&scanAll, "all", false, "enable all scanners")
+	scanCmd.Flags().StringVarP(&outputFile, "output", "o", "", "output file path")
+	scanCmd.Flags().StringVar(&failOnSeverity, "fail-on", "", "fail if findings match severity (critical, high, medium, low)")
+}
+
+func runScan(cmd *cobra.Command, args []string) error {
+	startTime := time.Now()
+
+	// Determine scan path
+	if len(args) > 0 {
+		scanPath = args[0]
+	} else {
+		var err error
+		scanPath, err = os.Getwd()
+		if err != nil {
+			return fmt.Errorf("failed to get working directory: %w", err)
+		}
+	}
+
+	// Convert to absolute path
+	absPath, err := filepath.Abs(scanPath)
+	if err != nil {
+		return fmt.Errorf("invalid path: %w", err)
+	}
+
+	// Load configuration
+	cfg, err := config.Load()
+	if err != nil {
+		if verbose {
+			fmt.Println(color.YellowString("⚠ No config file found, using defaults"))
+		}
+		cfg = config.Default()
+	}
+
+	// Apply CLI flags to config
+	applyScanFlags(cfg)
+
+	// Create scanner engine
+	engine := scanner.NewEngine(cfg)
+
+	// Print scan header
+	printScanHeader(absPath, cfg)
+
+	// Run scan
+	ctx := context.Background()
+	result, err := engine.Scan(ctx, absPath)
+	if err != nil {
+		return fmt.Errorf("scan failed: %w", err)
+	}
+
+	result.Duration = time.Since(startTime)
+
+	// Generate report
+	rep := reporter.New(cfg)
+	report, err := rep.Generate(result, outputFormat)
+	if err != nil {
+		return fmt.Errorf("failed to generate report: %w", err)
+	}
+
+	// Output report
+	if outputFile != "" {
+		if err := os.WriteFile(outputFile, []byte(report), 0644); err != nil {
+			return fmt.Errorf("failed to write report: %w", err)
+		}
+		fmt.Printf("\n%s Report saved to %s\n", color.GreenString("✓"), outputFile)
+	} else {
+		fmt.Println(report)
+	}
+
+	// Print summary
+	printScanSummary(result)
+
+	// Check fail conditions
+	if shouldFail(result, cfg) {
+		return fmt.Errorf("scan failed due to findings exceeding threshold")
+	}
+
+	return nil
+}
+
+func applyScanFlags(cfg *config.Config) {
+	if scanAll {
+		cfg.Scanners.Secrets.Enabled = true
+		cfg.Scanners.IaC.Enabled = true
+		cfg.Scanners.Dependencies.Enabled = true
+		cfg.Scanners.AI.Enabled = true
+		return
+	}
+
+	// If specific flags are set, only enable those
+	if scanSecrets || scanIaC || scanDependencies || scanAI {
+		cfg.Scanners.Secrets.Enabled = scanSecrets
+		cfg.Scanners.IaC.Enabled = scanIaC
+		cfg.Scanners.Dependencies.Enabled = scanDependencies
+		cfg.Scanners.AI.Enabled = scanAI
+	}
+
+	// Override fail-on severity
+	if failOnSeverity != "" {
+		cfg.FailOn.Severity = failOnSeverity
+	}
+}
+
+func printScanHeader(path string, cfg *config.Config) {
+	if !verbose {
+		return
+	}
+
+	fmt.Printf("📂 Scanning: %s\n", color.CyanString(path))
+	fmt.Printf("📋 Scanners: ")
+
+	scanners := []string{}
+	if cfg.Scanners.Secrets.Enabled {
+		scanners = append(scanners, "secrets")
+	}
+	if cfg.Scanners.IaC.Enabled {
+		scanners = append(scanners, "iac")
+	}
+	if cfg.Scanners.Dependencies.Enabled {
+		scanners = append(scanners, "dependencies")
+	}
+	if cfg.Scanners.AI.Enabled {
+		scanners = append(scanners, "ai")
+	}
+
+	for i, s := range scanners {
+		if i > 0 {
+			fmt.Print(", ")
+		}
+		fmt.Print(color.GreenString(s))
+	}
+	fmt.Println()
+	fmt.Println()
+}
+
+func printScanSummary(result *api.ScanResult) {
+	fmt.Println()
+	fmt.Println(color.CyanString("─────────────────────────────────────────────"))
+	fmt.Println(color.CyanString("                  SUMMARY                    "))
+	fmt.Println(color.CyanString("─────────────────────────────────────────────"))
+	fmt.Println()
+
+	counts := result.CountBySeverity()
+
+	if counts[api.SeverityCritical] > 0 {
+		fmt.Printf("  %s Critical: %d\n", color.RedString("●"), counts[api.SeverityCritical])
+	}
+	if counts[api.SeverityHigh] > 0 {
+		fmt.Printf("  %s High:     %d\n", color.RedString("●"), counts[api.SeverityHigh])
+	}
+	if counts[api.SeverityMedium] > 0 {
+		fmt.Printf("  %s Medium:   %d\n", color.YellowString("●"), counts[api.SeverityMedium])
+	}
+	if counts[api.SeverityLow] > 0 {
+		fmt.Printf("  %s Low:      %d\n", color.BlueString("●"), counts[api.SeverityLow])
+	}
+	if counts[api.SeverityInfo] > 0 {
+		fmt.Printf("  %s Info:     %d\n", color.WhiteString("●"), counts[api.SeverityInfo])
+	}
+
+	fmt.Println()
+	fmt.Printf("  Total findings: %d\n", len(result.Findings))
+	fmt.Printf("  Scan duration:  %s\n", result.Duration.Round(time.Millisecond))
+
+	if len(result.Findings) == 0 {
+		fmt.Println()
+		fmt.Println(color.GreenString("  ✓ No security issues found!"))
+	}
+}
+
+func shouldFail(result *api.ScanResult, cfg *config.Config) bool {
+	counts := result.CountBySeverity()
+
+	switch cfg.FailOn.Severity {
+	case "critical":
+		return counts[api.SeverityCritical] > 0
+	case "high":
+		return counts[api.SeverityCritical] > 0 || counts[api.SeverityHigh] > 0
+	case "medium":
+		return counts[api.SeverityCritical] > 0 || counts[api.SeverityHigh] > 0 || counts[api.SeverityMedium] > 0
+	case "low":
+		return counts[api.SeverityCritical] > 0 || counts[api.SeverityHigh] > 0 || counts[api.SeverityMedium] > 0 || counts[api.SeverityLow] > 0
+	}
+
+	// Also fail on secrets if configured
+	if cfg.FailOn.Secrets {
+		for _, f := range result.Findings {
+			if f.Type == api.FindingTypeSecret {
+				return true
+			}
+		}
+	}
+
+	return false
+}
