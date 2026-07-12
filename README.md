@@ -1,5 +1,7 @@
 # SentinelFlow
 
+[![SentinelFlow Security Scan](https://github.com/cozyGarage/sentielflow/actions/workflows/security-scan.yml/badge.svg)](https://github.com/cozyGarage/sentielflow/actions/workflows/security-scan.yml)
+
 **CI/CD Security Gatekeeper**
 
 SentinelFlow is a security scanning tool that integrates with CI/CD pipelines to detect leaked secrets, insecure infrastructure configurations, vulnerable dependencies, and policy violations.
@@ -138,6 +140,61 @@ sentinelflow:
 ```
 
 See [CI/CD Integration](docs/cicd-integration.md) for more examples.
+
+## Architecture
+
+SentinelFlow follows a pipeline-oriented design: a central scan engine orchestrates adapters, aggregates findings, and emits SARIF for the GitHub Security tab.
+
+```mermaid
+flowchart LR
+    subgraph Input
+        SRC[Source tree]
+        CFG[.sentinelflow.yaml]
+    end
+
+    subgraph Engine
+        SE[Scan Engine]
+        AD1[Secrets adapter]
+        AD2[IaC adapter]
+        AD3[Dependencies adapter]
+        AD4[Policy adapter OPA]
+    end
+
+    subgraph Output
+        SARIF[SARIF report]
+        GH[GitHub Security tab]
+        MD[Markdown PR comment]
+    end
+
+    SRC --> SE
+    CFG --> SE
+    SE --> AD1 & AD2 & AD3 & AD4
+    AD1 & AD2 & AD3 & AD4 --> SE
+    SE --> SARIF --> GH
+    SE --> MD
+```
+
+| Layer | Responsibility |
+| --- | --- |
+| **Scan engine** | File discovery, concurrent scanner dispatch, result aggregation |
+| **Adapters** | Secrets, IaC (Terraform/K8s/Dockerfile), dependencies (OSV), OPA policies |
+| **Reporter** | SARIF, JSON, Markdown, HTML — SARIF uploads integrate with GitHub Advanced Security |
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) and [docs/architecture.md](docs/architecture.md) for deeper diagrams.
+
+## Compliance & Pipeline Integration
+
+SentinelFlow is designed as a **shift-left security gate** suitable for regulated environments. It maps cleanly to common control themes without storing or exfiltrating discovered secrets.
+
+| Control theme | SentinelFlow capability | Framework alignment |
+| --- | --- | --- |
+| **Secrets & credential hygiene** | Regex + entropy scanning, CI fail-on-secrets | PCI-DSS Req. 3 & 8 (protect stored credentials; identify users) |
+| **Secure configuration** | IaC scanning for Terraform, Kubernetes, Dockerfiles | PCI-DSS Req. 2 (secure configurations); DORA ICT risk management |
+| **Dependency & supply-chain risk** | Lockfile parsing + OSV vulnerability lookup | DORA Art. 6 (ICT risk management); PCI-DSS Req. 6 (secure development) |
+| **Policy-as-code enforcement** | OPA/Rego gates (e.g. no privileged containers, HTTPS required) | DORA operational resilience testing; internal change-control policies |
+| **Audit trail** | SARIF artifacts uploaded to GitHub Security; SBOM generation in CI | Demonstrates evidence collection for audit and incident response |
+
+**Pipeline integration pattern:** run `sentinelflow scan --all --format sarif` on every pull request, upload SARIF to the platform security tab, and block merge when severity thresholds are exceeded. The included [`.github/workflows/security-scan.yml`](.github/workflows/security-scan.yml) workflow implements this end-to-end (scan → SARIF upload → PR comment → SBOM job).
 
 ## Scanners
 
