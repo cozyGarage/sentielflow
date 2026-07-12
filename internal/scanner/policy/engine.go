@@ -164,9 +164,9 @@ func getString(m map[string]interface{}, key string) string {
 func ConvertToFindings(result *PolicyResult, severity api.Severity) []api.Finding {
 	var findings []api.Finding
 
-	for _, violation := range result.Violations {
+	for i, violation := range result.Violations {
 		finding := api.Finding{
-			ID:          fmt.Sprintf("POLICY-%s", result.PolicyName),
+			ID:          fmt.Sprintf("POLICY-%s-%d", result.PolicyName, i),
 			Type:        api.FindingTypePolicyViolation,
 			Severity:    severity,
 			Title:       fmt.Sprintf("Policy Violation: %s", result.PolicyName),

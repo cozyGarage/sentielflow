@@ -108,13 +108,16 @@ func runScan(cmd *cobra.Command, args []string) error {
 	// Print scan header
 	printScanHeader(absPath, cfg)
 
-	// Run scan
-	ctx := context.Background()
+	// Run scan with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
 	result, err := engine.Scan(ctx, absPath)
 	if err != nil {
 		return fmt.Errorf("scan failed: %w", err)
 	}
 
+	result.Metadata.SentinelFlowVersion = GetVersion()
 	result.Duration = time.Since(startTime)
 
 	// Generate report
@@ -153,7 +156,8 @@ func applyScanFlags(cfg *config.Config) {
 		cfg.Scanners.SAST.Enabled = true
 		cfg.Scanners.Container.Enabled = true
 		cfg.Scanners.License.Enabled = true
-		cfg.Scanners.AI.Enabled = true
+		// AI scanner is not registered in v1.0
+		cfg.Scanners.AI.Enabled = false
 		return
 	}
 
@@ -262,21 +266,39 @@ func printScanSummary(result *api.ScanResult) {
 func shouldFail(result *api.ScanResult, cfg *config.Config) bool {
 	counts := result.CountBySeverity()
 
-	switch cfg.FailOn.Severity {
-	case "critical":
-		return counts[api.SeverityCritical] > 0
-	case "high":
-		return counts[api.SeverityCritical] > 0 || counts[api.SeverityHigh] > 0
-	case "medium":
-		return counts[api.SeverityCritical] > 0 || counts[api.SeverityHigh] > 0 || counts[api.SeverityMedium] > 0
-	case "low":
-		return counts[api.SeverityCritical] > 0 || counts[api.SeverityHigh] > 0 || counts[api.SeverityMedium] > 0 || counts[api.SeverityLow] > 0
+	if cfg.FailOn.Severity != "" {
+		switch cfg.FailOn.Severity {
+		case "critical":
+			if counts[api.SeverityCritical] > 0 {
+				return true
+			}
+		case "high":
+			if counts[api.SeverityCritical] > 0 || counts[api.SeverityHigh] > 0 {
+				return true
+			}
+		case "medium":
+			if counts[api.SeverityCritical] > 0 || counts[api.SeverityHigh] > 0 || counts[api.SeverityMedium] > 0 {
+				return true
+			}
+		case "low":
+			if counts[api.SeverityCritical] > 0 || counts[api.SeverityHigh] > 0 ||
+				counts[api.SeverityMedium] > 0 || counts[api.SeverityLow] > 0 {
+				return true
+			}
+		}
 	}
 
-	// Also fail on secrets if configured
 	if cfg.FailOn.Secrets {
 		for _, f := range result.Findings {
 			if f.Type == api.FindingTypeSecret {
+				return true
+			}
+		}
+	}
+
+	if cfg.FailOn.PolicyViolations {
+		for _, f := range result.Findings {
+			if f.Type == api.FindingTypePolicyViolation {
 				return true
 			}
 		}

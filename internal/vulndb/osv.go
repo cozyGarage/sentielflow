@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 )
 
 // OSVSource implements the OSV (Open Source Vulnerabilities) API
@@ -29,6 +31,11 @@ func NewOSVSource(client *http.Client) *OSVSource {
 
 func (s *OSVSource) Name() string {
 	return "osv"
+}
+
+// SetBaseURL overrides the OSV API base URL (for tests).
+func (s *OSVSource) SetBaseURL(url string) {
+	s.baseURL = url
 }
 
 // OSVRequest is the request format for OSV API
@@ -136,14 +143,24 @@ func (s *OSVSource) Query(ctx context.Context, ecosystem, pkg, version string) (
 			}
 		}
 
-		// Extract CVSS score
+		// Extract CVSS score from vector or numeric score field
 		for _, sev := range osv.Severity {
-			if sev.Type == "CVSS_V3" {
+			if sev.Type == "CVSS_V3" || sev.Type == "CVSS_V4" {
 				v.CVSSVector = sev.Score
-				// Parse CVSS score (simplified)
-				v.CVSS = 7.5 // Default medium
-				v.Severity = "high"
+				if score, err := strconv.ParseFloat(sev.Score, 64); err == nil {
+					v.CVSS = score
+					v.Severity = cvssToSeverity(score)
+				} else if score := parseCVSSBaseScore(sev.Score); score > 0 {
+					v.CVSS = score
+					v.Severity = cvssToSeverity(score)
+				} else {
+					v.Severity = "medium"
+				}
+				break
 			}
+		}
+		if v.Severity == "" {
+			v.Severity = "medium"
 		}
 
 		// Extract references
@@ -185,4 +202,32 @@ func mapEcosystem(ecosystem string) string {
 		return mapped
 	}
 	return ecosystem
+}
+
+func cvssToSeverity(score float64) string {
+	switch {
+	case score >= 9.0:
+		return "critical"
+	case score >= 7.0:
+		return "high"
+	case score >= 4.0:
+		return "medium"
+	case score > 0:
+		return "low"
+	default:
+		return "info"
+	}
+}
+
+func parseCVSSBaseScore(vector string) float64 {
+	// CVSS vector format: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H
+	parts := strings.Split(vector, "/")
+	for _, part := range parts {
+		if strings.HasPrefix(part, "CVSS:") {
+			continue
+		}
+		// Cannot derive exact score without full calculator; return 0 to use default
+		_ = part
+	}
+	return 0
 }

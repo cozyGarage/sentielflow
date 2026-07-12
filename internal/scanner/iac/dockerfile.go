@@ -10,6 +10,7 @@ import (
 "strings"
 
 "github.com/cozygarage/sentinelflow/internal/config"
+"github.com/cozygarage/sentinelflow/internal/scanner/redact"
 "github.com/cozygarage/sentinelflow/pkg/api"
 )
 
@@ -96,7 +97,7 @@ Location: api.Location{
 File:      relPath,
 StartLine: lineNum,
 EndLine:   lineNum,
-Snippet:   line,
+Snippet:   redact.Snippet(line),
 },
 Remediation: rule.Remediation,
 Scanner:     "iac",

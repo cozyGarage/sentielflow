@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/cozygarage/sentinelflow/internal/config"
+	"github.com/cozygarage/sentinelflow/internal/vulndb"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
 
@@ -18,6 +19,7 @@ import (
 type Scanner struct {
 	config     *config.Config
 	ecosystems map[string]EcosystemScanner
+	client     *vulndb.Client
 }
 
 // EcosystemScanner defines interface for package ecosystem scanners
@@ -33,6 +35,7 @@ type Dependency struct {
 	Version   string
 	Ecosystem string
 	FilePath  string
+	Dev       bool
 }
 
 // Vulnerability represents a known vulnerability
@@ -59,7 +62,11 @@ func NewScanner(cfg *config.Config) *Scanner {
 		ecosystems: make(map[string]EcosystemScanner),
 	}
 
-	// Register ecosystem scanners
+	client, err := vulndb.NewClient()
+	if err == nil {
+		s.client = client
+	}
+
 	s.ecosystems["go"] = &GoModScanner{}
 	s.ecosystems["npm"] = &NpmScanner{}
 	s.ecosystems["pip"] = &PipScanner{}
@@ -102,7 +109,6 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 		Findings: []api.Finding{},
 	}
 
-	// Detect ecosystems in the project
 	ecosystemsFound := s.detectEcosystems(path)
 
 	var wg sync.WaitGroup
@@ -118,13 +124,25 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 				return
 			}
 
-			// Check each dependency for vulnerabilities
 			for _, dep := range deps {
-				vulns := s.checkVulnerabilities(dep)
+				if s.config.Scanners.Dependencies.IgnoreDev && dep.Dev {
+					continue
+				}
+
+				vulns, err := s.checkVulnerabilities(ctx, dep)
+				if err != nil {
+					continue
+				}
 
 				for _, vuln := range vulns {
-					finding := s.createFinding(dep, vuln, path)
+					if s.shouldIgnoreCVE(vuln.CVE) {
+						continue
+					}
+					if !meetsMinSeverity(vuln.Severity, s.config.Scanners.Dependencies.Severity) {
+						continue
+					}
 
+					finding := s.createFinding(dep, vuln, path)
 					mu.Lock()
 					result.Findings = append(result.Findings, finding)
 					mu.Unlock()
@@ -139,11 +157,54 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 	return result, nil
 }
 
+func (s *Scanner) shouldIgnoreCVE(cve string) bool {
+	if cve == "" {
+		return false
+	}
+	for _, ignored := range s.config.Scanners.Dependencies.IgnoreCVEs {
+		if strings.EqualFold(ignored, cve) {
+			return true
+		}
+	}
+	return false
+}
+
+func meetsMinSeverity(found api.Severity, minimum string) bool {
+	order := map[api.Severity]int{
+		api.SeverityCritical: 4,
+		api.SeverityHigh:     3,
+		api.SeverityMedium:   2,
+		api.SeverityLow:      1,
+		api.SeverityInfo:     0,
+	}
+	min := order[api.Severity(minimum)]
+	if min == 0 && minimum != "info" && minimum != "low" {
+		min = order[api.SeverityMedium]
+	}
+	return order[found] >= min
+}
+
 // detectEcosystems detects which package ecosystems are used
 func (s *Scanner) detectEcosystems(path string) map[string]EcosystemScanner {
 	detected := make(map[string]EcosystemScanner)
 
+	cfgEcosystems := s.config.Scanners.Dependencies.Ecosystems
+	autoDetect := len(cfgEcosystems) == 0 || (len(cfgEcosystems) == 1 && cfgEcosystems[0] == "auto")
+
 	for name, ecosys := range s.ecosystems {
+		if !autoDetect {
+			enabled := false
+			for _, e := range cfgEcosystems {
+				if e == name || e == "auto" {
+					enabled = true
+					break
+				}
+			}
+			if !enabled {
+				continue
+			}
+		}
+
 		if ecosys.Detect(path) {
 			detected[name] = ecosys
 		}
@@ -152,49 +213,88 @@ func (s *Scanner) detectEcosystems(path string) map[string]EcosystemScanner {
 	return detected
 }
 
-// checkVulnerabilities checks if a dependency has known vulnerabilities
-func (s *Scanner) checkVulnerabilities(dep Dependency) []Vulnerability {
-	// This is a simplified implementation
-	// In production, this would query vulnerability databases (NVD, OSV, etc.)
-
-	// For demonstration, return known vulnerable versions
-	vulnDB := s.getKnownVulnerabilities()
-
-	var vulnerabilities []Vulnerability
-
-	key := fmt.Sprintf("%s/%s@%s", dep.Ecosystem, dep.Name, dep.Version)
-	if vulns, exists := vulnDB[key]; exists {
-		vulnerabilities = append(vulnerabilities, vulns...)
+func (s *Scanner) checkVulnerabilities(ctx context.Context, dep Dependency) ([]Vulnerability, error) {
+	if s.client == nil {
+		return nil, fmt.Errorf("vulnerability database unavailable")
 	}
 
-	return vulnerabilities
+	version := normalizeVersion(dep.Version)
+	vulns, err := s.client.Query(ctx, dep.Ecosystem, dep.Name, version)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []Vulnerability
+	for _, v := range vulns {
+		results = append(results, Vulnerability{
+			ID:          v.ID,
+			CVE:         v.CVE,
+			Severity:    severityFromVulnDB(v.Severity, v.CVSS),
+			CVSS:        v.CVSS,
+			Description: firstNonEmpty(v.Summary, v.Details),
+			FixedIn:     firstFixedVersion(v.Fixed, v.Affected),
+			References:  v.References,
+		})
+	}
+
+	return results, nil
 }
 
-// getKnownVulnerabilities returns a sample vulnerability database
-func (s *Scanner) getKnownVulnerabilities() map[string][]Vulnerability {
-	// This is a minimal example. In production, integrate with:
-	// - National Vulnerability Database (NVD)
-	// - OSV (Open Source Vulnerabilities)
-	// - GitHub Advisory Database
-	// - Snyk vulnerability DB
+func normalizeVersion(version string) string {
+	version = strings.TrimSpace(version)
+	version = strings.TrimPrefix(version, "v")
+	version = strings.TrimPrefix(version, "^")
+	version = strings.TrimPrefix(version, "~")
+	return version
+}
 
-	return map[string][]Vulnerability{
-		// Example vulnerable packages
-		"npm/lodash@4.17.20": {
-			{
-				ID:          "GHSA-29mw-wpgm-hmr9",
-				CVE:         "CVE-2020-8203",
-				Severity:    api.SeverityHigh,
-				CVSS:        7.4,
-				Description: "Prototype pollution in lodash",
-				FixedIn:     "4.17.21",
-				References: []string{
-					"https://github.com/lodash/lodash/issues/4874",
-					"https://nvd.nist.gov/vuln/detail/CVE-2020-8203",
-				},
-			},
-		},
+func severityFromVulnDB(severity string, cvss float64) api.Severity {
+	switch strings.ToLower(severity) {
+	case "critical":
+		return api.SeverityCritical
+	case "high":
+		return api.SeverityHigh
+	case "medium", "moderate":
+		return api.SeverityMedium
+	case "low":
+		return api.SeverityLow
 	}
+
+	if cvss >= 9.0 {
+		return api.SeverityCritical
+	}
+	if cvss >= 7.0 {
+		return api.SeverityHigh
+	}
+	if cvss >= 4.0 {
+		return api.SeverityMedium
+	}
+	if cvss > 0 {
+		return api.SeverityLow
+	}
+
+	return api.SeverityMedium
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func firstFixedVersion(fixed []string, affected []vulndb.Range) string {
+	if len(fixed) > 0 {
+		return fixed[0]
+	}
+	for _, r := range affected {
+		if r.Fixed != "" {
+			return r.Fixed
+		}
+	}
+	return ""
 }
 
 // createFinding creates a finding from a vulnerability
@@ -206,12 +306,12 @@ func (s *Scanner) createFinding(dep Dependency, vuln Vulnerability, basePath str
 		Type:        api.FindingTypeVulnerability,
 		Severity:    vuln.Severity,
 		Title:       fmt.Sprintf("Vulnerable dependency: %s", dep.Name),
-		Description: fmt.Sprintf("%s version %s has known vulnerability: %s", dep.Name, dep.Version, vuln.Description),
+		Description: fmt.Sprintf("%s@%s: %s", dep.Name, dep.Version, vuln.Description),
 		Location: api.Location{
 			File:    relPath,
 			Snippet: fmt.Sprintf("%s@%s", dep.Name, dep.Version),
 		},
-		Remediation: fmt.Sprintf("Update %s to version %s or later", dep.Name, vuln.FixedIn),
+		Remediation: fmt.Sprintf("Update %s to a patched version%s", dep.Name, formatFixedIn(vuln.FixedIn)),
 		References:  vuln.References,
 		Scanner:     "dependencies",
 		RuleID:      vuln.ID,
@@ -219,6 +319,13 @@ func (s *Scanner) createFinding(dep Dependency, vuln Vulnerability, basePath str
 		CVSS:        vuln.CVSS,
 		Confidence:  0.95,
 	}
+}
+
+func formatFixedIn(fixed string) string {
+	if fixed == "" {
+		return ""
+	}
+	return " (fixed in " + fixed + ")"
 }
 
 // GoModScanner scans Go modules
@@ -256,7 +363,6 @@ func (g *GoModScanner) Scan(ctx context.Context, path string) ([]Dependency, err
 		}
 
 		if inRequire || strings.HasPrefix(trimmed, "require ") {
-			// Parse: module version
 			parts := strings.Fields(trimmed)
 			if len(parts) >= 2 {
 				deps = append(deps, Dependency{
@@ -303,9 +409,19 @@ func (n *NpmScanner) Scan(ctx context.Context, path string) ([]Dependency, error
 	for name, version := range pkg.Dependencies {
 		deps = append(deps, Dependency{
 			Name:      name,
-			Version:   strings.TrimPrefix(version, "^"),
+			Version:   normalizeVersion(version),
 			Ecosystem: "npm",
 			FilePath:  pkgPath,
+		})
+	}
+
+	for name, version := range pkg.DevDependencies {
+		deps = append(deps, Dependency{
+			Name:      name,
+			Version:   normalizeVersion(version),
+			Ecosystem: "npm",
+			FilePath:  pkgPath,
+			Dev:       true,
 		})
 	}
 
@@ -343,7 +459,6 @@ func (p *PipScanner) Scan(ctx context.Context, path string) ([]Dependency, error
 			continue
 		}
 
-		// Parse: package==version or package>=version
 		parts := strings.FieldsFunc(trimmed, func(r rune) bool {
 			return r == '=' || r == '>' || r == '<'
 		})
@@ -372,8 +487,6 @@ func (m *MavenScanner) Detect(path string) bool {
 }
 
 func (m *MavenScanner) Scan(ctx context.Context, path string) ([]Dependency, error) {
-	// Simplified Maven scanning
-	// In production, parse pom.xml properly
 	return []Dependency{}, nil
 }
 
@@ -388,7 +501,5 @@ func (c *CargoScanner) Detect(path string) bool {
 }
 
 func (c *CargoScanner) Scan(ctx context.Context, path string) ([]Dependency, error) {
-	// Simplified Cargo scanning
-	// In production, parse Cargo.toml properly
 	return []Dependency{}, nil
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -227,7 +228,12 @@ func (e *Engine) collectGitMetadata(path string, meta *api.ScanMetadata) {
 	if meta.GitBranch != "" {
 		refFile := filepath.Join(gitDir, "refs", "heads", meta.GitBranch)
 		if data, err := os.ReadFile(refFile); err == nil {
-			meta.GitCommit = string(data)[:40]
+			commit := strings.TrimSpace(string(data))
+			if len(commit) >= 40 {
+				meta.GitCommit = commit[:40]
+			} else if commit != "" {
+				meta.GitCommit = commit
+			}
 		}
 	}
 }

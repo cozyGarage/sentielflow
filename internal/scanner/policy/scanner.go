@@ -3,7 +3,6 @@ package policy
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,18 +13,8 @@ import (
 
 // Scanner implements policy-as-code scanning using OPA
 type Scanner struct {
-	config   *config.Config
-	policies []Policy
-}
-
-// Policy represents a security policy
-type Policy struct {
-	ID          string
-	Name        string
-	Description string
-	Severity    api.Severity
-	Query       string // OPA Rego query
-	FilePath    string
+	config     *config.Config
+	severities map[string]api.Severity
 }
 
 // ScannerResult contains scan results
@@ -36,11 +25,10 @@ type ScannerResult struct {
 
 // NewScanner creates a new policy scanner
 func NewScanner(cfg *config.Config) *Scanner {
-	s := &Scanner{
-		config: cfg,
+	return &Scanner{
+		config:     cfg,
+		severities: make(map[string]api.Severity),
 	}
-	s.policies = s.loadPolicies()
-	return s
 }
 
 // Name returns the scanner identifier
@@ -50,8 +38,6 @@ func (s *Scanner) Name() string {
 
 // Supports returns true for files that policies should check
 func (s *Scanner) Supports(path string) bool {
-	// Policy scanner can check any file type
-	// It's more about what policies are configured
 	return true
 }
 
@@ -61,142 +47,130 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 		Findings: []api.Finding{},
 	}
 
-	// Load all Rego policies from configured locations
-	if err := s.loadRegoFiles(); err != nil {
+	if !s.config.Policies.Enabled {
+		return result, nil
+	}
+
+	engine := NewOPAEngine()
+	if err := s.loadPolicyFiles(engine, path); err != nil {
 		return result, err
 	}
 
-	// For each policy, evaluate it against the codebase
-	for _, policy := range s.policies {
-		violations := s.evaluatePolicy(ctx, policy, path)
-		result.Findings = append(result.Findings, violations...)
+	policyNames := engine.ListPolicies()
+	if len(policyNames) == 0 {
+		return result, nil
 	}
 
-	result.FilesCount = len(s.policies)
-	return result, nil
-}
+	inputs, err := collectPolicyInputs(path)
+	if err != nil {
+		return result, err
+	}
 
-// loadPolicies loads built-in policies
-func (s *Scanner) loadPolicies() []Policy {
-	var policies []Policy
+	result.FilesCount = len(inputs)
 
-	// Load built-in policies from config
-	for _, policyName := range s.config.Policies.Builtin {
-		if policy := s.getBuiltinPolicy(policyName); policy != nil {
-			policies = append(policies, *policy)
+	for _, input := range inputs {
+		for _, name := range policyNames {
+			select {
+			case <-ctx.Done():
+				return result, ctx.Err()
+			default:
+			}
+
+			policyResult, err := engine.EvaluatePolicy(name, input.Data)
+			if err != nil {
+				continue
+			}
+
+			severity := s.severityFor(name)
+			findings := ConvertToFindings(policyResult, severity)
+			for i := range findings {
+				if findings[i].Location.File == "" {
+					findings[i].Location.File = input.FilePath
+				}
+			}
+			result.Findings = append(result.Findings, findings...)
 		}
 	}
 
-	return policies
+	return result, nil
 }
 
-// getBuiltinPolicy returns a built-in policy by name
-func (s *Scanner) getBuiltinPolicy(name string) *Policy {
-	builtinPolicies := map[string]Policy{
-		"no-public-s3-buckets": {
-			ID:          "pol-s3-public",
-			Name:        "No Public S3 Buckets",
-			Description: "Prevents S3 buckets from being publicly accessible",
-			Severity:    api.SeverityCritical,
-			Query:       "data.sentinelflow.s3.deny_public_buckets",
-		},
-		"no-privileged-containers": {
-			ID:          "pol-k8s-privileged",
-			Name:        "No Privileged Containers",
-			Description: "Prevents deployment of privileged containers",
-			Severity:    api.SeverityCritical,
-			Query:       "data.sentinelflow.kubernetes.deny_privileged",
-		},
-		"require-https": {
-			ID:          "pol-https-required",
-			Name:        "Require HTTPS",
-			Description: "Ensures all endpoints use HTTPS",
-			Severity:    api.SeverityHigh,
-			Query:       "data.sentinelflow.network.require_https",
-		},
-		"no-hardcoded-credentials": {
-			ID:          "pol-no-hardcoded-creds",
-			Name:        "No Hardcoded Credentials",
-			Description: "Prevents hardcoded passwords and secrets",
-			Severity:    api.SeverityCritical,
-			Query:       "data.sentinelflow.secrets.deny_hardcoded",
-		},
-		"enforce-encryption": {
-			ID:          "pol-encryption-required",
-			Name:        "Enforce Encryption",
-			Description: "Requires encryption at rest for storage resources",
-			Severity:    api.SeverityHigh,
-			Query:       "data.sentinelflow.encryption.require_at_rest",
-		},
+func (s *Scanner) loadPolicyFiles(engine *OPAEngine, scanRoot string) error {
+	seen := make(map[string]bool)
+
+	loadDir := func(dir string) {
+		if dir == "" {
+			return
+		}
+		if _, err := os.Stat(dir); err != nil {
+			return
+		}
+		_ = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+			if err != nil || info.IsDir() || !strings.HasSuffix(path, ".rego") {
+				return err
+			}
+			if seen[path] {
+				return nil
+			}
+			seen[path] = true
+
+			content, err := os.ReadFile(path)
+			if err != nil {
+				return nil
+			}
+
+			name := strings.TrimSuffix(filepath.Base(path), ".rego")
+			if err := engine.LoadPolicy(name, string(content)); err != nil {
+				return nil
+			}
+			s.severities[name] = parseSeverityFromRego(string(content))
+			return nil
+		})
 	}
 
-	if policy, exists := builtinPolicies[name]; exists {
-		return &policy
-	}
+	loadDir(filepath.Join(scanRoot, "policies"))
+	loadDir("policies")
 
-	return nil
-}
-
-// loadRegoFiles loads custom Rego policy files
-func (s *Scanner) loadRegoFiles() error {
 	for _, pattern := range s.config.Policies.Files {
 		matches, err := filepath.Glob(pattern)
 		if err != nil {
 			continue
 		}
-
 		for _, path := range matches {
-			if !strings.HasSuffix(path, ".rego") {
+			if !strings.HasSuffix(path, ".rego") || seen[path] {
 				continue
 			}
+			seen[path] = true
 
 			content, err := os.ReadFile(path)
 			if err != nil {
 				continue
 			}
 
-			// Parse the Rego file to extract policy metadata
-			policy := s.parseRegoFile(path, string(content))
-			if policy != nil {
-				s.policies = append(s.policies, *policy)
+			name := strings.TrimSuffix(filepath.Base(path), ".rego")
+			if err := engine.LoadPolicy(name, string(content)); err != nil {
+				continue
 			}
+			s.severities[name] = parseSeverityFromRego(string(content))
 		}
 	}
 
 	return nil
 }
 
-// parseRegoFile extracts policy information from a Rego file
-func (s *Scanner) parseRegoFile(path, content string) *Policy {
-	// Simple metadata extraction from comments
-	// In production, use proper Rego parser
-
-	policy := &Policy{
-		ID:       filepath.Base(path),
-		Name:     filepath.Base(path),
-		FilePath: path,
-		Severity: api.SeverityMedium,
-	}
-
-	lines := strings.Split(content, "\n")
-	for _, line := range lines {
-		if strings.Contains(line, "# METADATA") {
-			// Parse metadata from comments
-			if strings.Contains(line, "title:") {
-				policy.Name = strings.TrimSpace(strings.Split(line, "title:")[1])
-			}
-			if strings.Contains(line, "severity:") {
-				severityStr := strings.TrimSpace(strings.Split(line, "severity:")[1])
-				policy.Severity = s.parseSeverity(severityStr)
+func parseSeverityFromRego(content string) api.Severity {
+	for _, line := range strings.Split(content, "\n") {
+		if strings.Contains(line, "# severity:") {
+			parts := strings.SplitN(line, "severity:", 2)
+			if len(parts) == 2 {
+				return parseSeverity(strings.TrimSpace(parts[1]))
 			}
 		}
 	}
-
-	return policy
+	return api.SeverityMedium
 }
 
-// parseSeverity converts string to Severity
-func (s *Scanner) parseSeverity(str string) api.Severity {
+func parseSeverity(str string) api.Severity {
 	switch strings.ToLower(str) {
 	case "critical":
 		return api.SeverityCritical
@@ -211,46 +185,9 @@ func (s *Scanner) parseSeverity(str string) api.Severity {
 	}
 }
 
-// evaluatePolicy evaluates a policy against the target path
-func (s *Scanner) evaluatePolicy(ctx context.Context, policy Policy, targetPath string) []api.Finding {
-	var findings []api.Finding
-
-	// This is a simplified implementation
-	// In production, integrate with OPA's Go SDK to evaluate Rego policies
-
-	// For now, create placeholder findings for demonstration
-	// Real implementation would:
-	// 1. Load Rego policy into OPA
-	// 2. Prepare input data from scanned files
-	// 3. Evaluate policy query
-	// 4. Extract violations from results
-
-	// Placeholder logic for demonstration
-	if s.shouldTriggerPolicy(policy, targetPath) {
-		finding := api.Finding{
-			ID:          fmt.Sprintf("POL-%s", policy.ID),
-			Type:        api.FindingTypePolicyViolation,
-			Severity:    policy.Severity,
-			Title:       policy.Name,
-			Description: policy.Description,
-			Location: api.Location{
-				File: "policy-evaluation",
-			},
-			Remediation: fmt.Sprintf("Review and comply with policy: %s", policy.Name),
-			Scanner:     "policy",
-			RuleID:      policy.ID,
-			Confidence:  0.9,
-		}
-
-		findings = append(findings, finding)
+func (s *Scanner) severityFor(name string) api.Severity {
+	if sev, ok := s.severities[name]; ok {
+		return sev
 	}
-
-	return findings
-}
-
-// shouldTriggerPolicy is a placeholder for actual OPA evaluation
-func (s *Scanner) shouldTriggerPolicy(policy Policy, targetPath string) bool {
-	// This would be replaced with actual OPA integration
-	// For now, return false to avoid noise
-	return false
+	return api.SeverityMedium
 }

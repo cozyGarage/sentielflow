@@ -51,6 +51,14 @@ func Execute() error {
 	return rootCmd.Execute()
 }
 
+// GetVersion returns the application version string.
+func GetVersion() string {
+	if versionInfo.Version == "" {
+		return "dev"
+	}
+	return versionInfo.Version
+}
+
 // SetVersionInfo sets version information from build flags
 func SetVersionInfo(version, commit, date string) {
 	versionInfo.Version = version

@@ -13,6 +13,7 @@ import (
 
 	"github.com/cozygarage/sentinelflow/internal/config"
 	"github.com/cozygarage/sentinelflow/internal/scanner/filter"
+	"github.com/cozygarage/sentinelflow/internal/scanner/redact"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
 
@@ -79,6 +80,9 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 
 	result.FilesCount = len(files)
 
+	concurrency := 8
+	sem := make(chan struct{}, concurrency)
+
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 
@@ -89,6 +93,9 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 		wg.Add(1)
 		go func(fp string) {
 			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
 			findings, err := s.scanFile(ctx, fp, path)
 			if err != nil {
 				return
@@ -150,7 +157,7 @@ func (s *Scanner) scanFile(ctx context.Context, filePath, basePath string) ([]ap
 							EndLine:   lineNum,
 							StartCol:  loc[0] + 1,
 							EndCol:    loc[1] + 1,
-							Snippet:   truncate(line, 120),
+							Snippet:   redact.Snippet(line),
 						},
 						Remediation: remediationFor(rule.Category),
 						Scanner:     "sast",

@@ -17,6 +17,7 @@ import (
 
 	"github.com/cozygarage/sentinelflow/internal/config"
 	"github.com/cozygarage/sentinelflow/internal/scanner/filter"
+	"github.com/cozygarage/sentinelflow/internal/scanner/redact"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 	"gopkg.in/yaml.v3"
 )
@@ -569,18 +570,7 @@ func (s *Scanner) checkHighEntropy(line string, lineNum int, filePath, basePath 
 
 // maskSecret masks the secret in the line for safe display
 func (s *Scanner) maskSecret(line string, start, end int) string {
-	if start < 0 || end > len(line) || start >= end {
-		return line
-	}
-
-	secretLen := end - start
-	maskedLen := secretLen
-	if maskedLen > 8 {
-		maskedLen = 8
-	}
-
-	masked := line[:start] + strings.Repeat("*", maskedLen) + line[end:]
-	return masked
+	return redact.Substring(line, start, end)
 }
 
 // getRemediation returns remediation advice for a secret type
@@ -651,6 +641,9 @@ func (s *Scanner) scanGitHistory(ctx context.Context, path string) ([]api.Findin
 		files := strings.Split(strings.TrimSpace(string(showOutput)), "\n")
 		for _, file := range files {
 			if file == "" || !s.Supports(file) {
+				continue
+			}
+			if filter.ShouldSkip(file, s.config.Scanners.Secrets.Allowlist) {
 				continue
 			}
 

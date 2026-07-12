@@ -196,7 +196,7 @@ func Default() *Config {
 		},
 		Policies: PoliciesConfig{
 			Enabled: true,
-			Files:   []string{".sentinelflow/policies/*.rego"},
+			Files:   []string{"policies/*.rego", ".sentinelflow/policies/*.rego"},
 			Builtin: []string{
 				"no-public-s3-buckets",
 				"no-privileged-containers",

@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -97,7 +98,7 @@ func findGitDir() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("not a git repository: run this command from within a git repo")
 	}
-	return filepath.Clean(string(output)), nil
+	return filepath.Clean(strings.TrimSpace(string(output))), nil
 }
 
 func containsMarker(content string) bool {
