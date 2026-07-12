@@ -1,0 +1,147 @@
+name: SentinelFlow Security Scan
+description: Run SentinelFlow security scanning in your CI/CD pipeline
+author: SentinelFlow
+
+branding:
+  icon: shield
+  color: blue
+
+inputs:
+  scan-all:
+    description: Enable all scanners (secrets, iac, deps, sast, license)
+    required: false
+    default: 'true'
+  scan-secrets:
+    description: Enable secret scanning
+    required: false
+    default: 'true'
+  scan-iac:
+    description: Enable Infrastructure-as-Code scanning
+    required: false
+    default: 'true'
+  scan-deps:
+    description: Enable dependency vulnerability scanning
+    required: false
+    default: 'true'
+  scan-sast:
+    description: Enable SAST scanning (OWASP patterns)
+    required: false
+    default: 'true'
+  scan-license:
+    description: Enable license policy scanning
+    required: false
+    default: 'true'
+  scan-container:
+    description: Enable container image scanning (requires Trivy)
+    required: false
+    default: 'false'
+  container-image:
+    description: Container image reference to scan
+    required: false
+    default: ''
+  use-baseline:
+    description: Apply baseline filtering (.sentinelflow.baseline.json)
+    required: false
+    default: 'false'
+  fail-on:
+    description: Fail on findings at or above this severity (critical, high, medium, low)
+    required: false
+    default: high
+  format:
+    description: Report output format (text, json, sarif, markdown, html)
+    required: false
+    default: sarif
+  output:
+    description: Output file path for the report
+    required: false
+    default: report.sarif
+  go-version:
+    description: Go version for building SentinelFlow
+    required: false
+    default: '1.24'
+  working-directory:
+    description: Directory to scan
+    required: false
+    default: '.'
+
+outputs:
+  findings-count:
+    description: Total number of findings (from scan summary)
+    value: ${{ steps.scan.outputs.findings-count }}
+  exit-code:
+    description: Exit code from the scan step
+    value: ${{ steps.scan.outputs.exit-code }}
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ inputs.go-version }}
+
+    - name: Build SentinelFlow
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      run: |
+        go build -o sentinelflow ./cmd/sentinelflow
+        ./sentinelflow version
+
+    - name: Install Trivy
+      if: inputs.scan-container == 'true'
+      uses: aquasecurity/setup-trivy@v0.2.4
+
+    - name: Run security scan
+      id: scan
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        SF="${{ github.workspace }}/sentinelflow"
+
+        if [ "${{ inputs.scan-all }}" = "true" ]; then
+          ARGS="--all"
+        else
+          ARGS=""
+          [ "${{ inputs.scan-secrets }}" = "true" ] && ARGS="$ARGS --secrets"
+          [ "${{ inputs.scan-iac }}" = "true" ] && ARGS="$ARGS --iac"
+          [ "${{ inputs.scan-deps }}" = "true" ] && ARGS="$ARGS --deps"
+          [ "${{ inputs.scan-sast }}" = "true" ] && ARGS="$ARGS --sast"
+          [ "${{ inputs.scan-license }}" = "true" ] && ARGS="$ARGS --license"
+        fi
+
+        if [ "${{ inputs.scan-container }}" = "true" ]; then
+          ARGS="$ARGS --container"
+          if [ -n "${{ inputs.container-image }}" ]; then
+            ARGS="$ARGS --container-image ${{ inputs.container-image }}"
+          fi
+        fi
+
+        if [ "${{ inputs.use-baseline }}" = "true" ]; then
+          ARGS="$ARGS --baseline"
+        fi
+
+        set +e
+        "$SF" scan $ARGS \
+          --fail-on ${{ inputs.fail-on }} \
+          --format ${{ inputs.format }} \
+          -o "${{ github.workspace }}/${{ inputs.output }}"
+        EXIT_CODE=$?
+        set -e
+
+        echo "exit-code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
+
+        if [ -f "${{ github.workspace }}/${{ inputs.output }}" ]; then
+          if [ "${{ inputs.format }}" = "json" ]; then
+            COUNT=$(grep -o '"severity"' "${{ github.workspace }}/${{ inputs.output }}" | wc -l | tr -d ' ')
+            echo "findings-count=$COUNT" >> "$GITHUB_OUTPUT"
+          elif [ "${{ inputs.format }}" = "sarif" ]; then
+            COUNT=$(grep -o '"ruleId"' "${{ github.workspace }}/${{ inputs.output }}" | wc -l | tr -d ' ')
+            echo "findings-count=$COUNT" >> "$GITHUB_OUTPUT"
+          else
+            echo "findings-count=0" >> "$GITHUB_OUTPUT"
+          fi
+        else
+          echo "findings-count=0" >> "$GITHUB_OUTPUT"
+        fi
+
+        exit $EXIT_CODE

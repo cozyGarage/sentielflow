@@ -56,8 +56,8 @@ func (s *Scanner) Supports(path string) bool {
 		return true
 	}
 
-	// Dockerfile
-	if base == "dockerfile" || strings.HasPrefix(base, "dockerfile.") {
+	// Dockerfile (exclude Go source files named dockerfile.go)
+	if ext != ".go" && (base == "dockerfile" || strings.HasPrefix(base, "dockerfile.")) {
 		return true
 	}
 
@@ -131,7 +131,7 @@ func (s *Scanner) scanFile(ctx context.Context, filePath, basePath string) []api
 	}
 
 	// Dockerfile
-	if base == "dockerfile" || strings.HasPrefix(base, "dockerfile.") {
+	if ext != ".go" && (base == "dockerfile" || strings.HasPrefix(base, "dockerfile.")) {
 		return s.docker.ScanFile(ctx, filePath, basePath)
 	}
 

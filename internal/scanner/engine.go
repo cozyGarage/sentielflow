@@ -12,6 +12,7 @@ import (
 	"github.com/cozygarage/sentinelflow/internal/adapter"
 	"github.com/cozygarage/sentinelflow/internal/baseline"
 	"github.com/cozygarage/sentinelflow/internal/config"
+	"github.com/cozygarage/sentinelflow/internal/scanner/filter"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
 
@@ -202,17 +203,7 @@ func (e *Engine) collectFiles(targetPath string) ([]string, error) {
 
 // shouldSkip checks if a file should be skipped based on allowlist patterns
 func (e *Engine) shouldSkip(path string) bool {
-	// Check secret scanner allowlist
-	for _, pattern := range e.config.Scanners.Secrets.Allowlist {
-		if matched, _ := filepath.Match(pattern, path); matched {
-			return true
-		}
-		// Also try matching just the filename
-		if matched, _ := filepath.Match(pattern, filepath.Base(path)); matched {
-			return true
-		}
-	}
-	return false
+	return filter.ShouldSkip(path, e.config.Scanners.Secrets.Allowlist)
 }
 
 // collectGitMetadata extracts git information if available

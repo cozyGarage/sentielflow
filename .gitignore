@@ -1,7 +1,8 @@
-# Binaries
-bin/
-sentinelflow
-sentinelflow.exe
+# Binaries (root only — do not ignore .github/actions/sentinelflow/)
+/sentinelflow
+/sentinelflow.exe
+/bin/sentinelflow
+/bin/sentinelflow.exe
 
 # OS generated files
 .DS_Store

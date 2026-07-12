@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/cozygarage/sentinelflow/internal/config"
+	"github.com/cozygarage/sentinelflow/internal/scanner/filter"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
 
@@ -179,6 +180,13 @@ func (s *Scanner) collectFiles(dir string) ([]string, error) {
 			return nil
 		}
 		if info.Size() > 1024*1024 {
+			return nil
+		}
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			rel = path
+		}
+		if filter.ShouldSkip(rel, s.config.Scanners.Secrets.Allowlist) {
 			return nil
 		}
 		files = append(files, path)

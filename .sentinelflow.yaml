@@ -1,0 +1,37 @@
+version: "1.0"
+
+scanners:
+  secrets:
+    enabled: true
+    allowlist:
+      - "**/*_test.go"
+      - "**/*_bench_test.go"
+      - "**/testdata/**"
+      # Scanner implementations contain intentional pattern examples
+      - "internal/scanner/sast/scanner.go"
+      - "internal/scanner/secrets/scanner.go"
+      - "internal/scanner/secrets/patterns_test.go"
+      - "internal/scanner/policy/engine.go"
+      - "internal/scanner/container/scanner.go"
+      - "internal/scanner/dependencies/scanner.go"
+      - "internal/scanner/iac/dockerfile.go"
+
+  iac:
+    enabled: true
+
+  dependencies:
+    enabled: true
+
+  sast:
+    enabled: true
+
+  license:
+    enabled: true
+
+policies:
+  enabled: true
+
+fail_on:
+  severity: high
+  secrets: true
+  policy_violations: true
