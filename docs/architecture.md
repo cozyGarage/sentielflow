@@ -1,8 +1,6 @@
 # System Architecture: SentinelFlow
 
-![White Hat Hacking](assets/hacker.png)
-
-This document explains the internal architecture of SentinelFlow using high-level system design patterns. For a white-hat hacker, understanding how security tools are built is as important as knowing how to use them.
+This document explains the internal architecture of SentinelFlow v1.0 using high-level system design patterns.
 
 ---
 
@@ -21,19 +19,21 @@ graph LR
         S1["Secrets Scanner"]
         S2["IaC Scanner"]
         S3["Dependency Scanner"]
-        S4["Custom OPA Rules"]
+        S4["SAST Scanner"]
+        S5["License Scanner"]
+        S6["Policy Engine (OPA)"]
     end
 
     subgraph "External Feeds"
         VDB["OSV.dev API"]
-        CACHE["Local Cache (SQLite)"]
+        CACHE["In-Memory Cache"]
     end
 
-    SRC --> S1 & S2 & S3
-    CFG --> S1 & S2 & S3 & S4
+    SRC --> S1 & S2 & S3 & S4 & S5
+    CFG --> S1 & S2 & S3 & S4 & S5 & S6
     VDB --> CACHE --> S3
 
-    S1 & S2 & S3 & S4 --> AGG["Result Aggregator"]
+    S1 & S2 & S3 & S4 & S5 & S6 --> AGG["Result Aggregator"]
 
     subgraph "Output Layer"
         AGG --> R1["SARIF (GitHub)"]
@@ -70,7 +70,7 @@ sequenceDiagram
         else Cache Miss
             C->>OSV: Query Vulnerabilities
             OSV-->>C: Vulnerability JSON
-            C->>C: Store in SQLite (TTL 24h)
+            C->>C: Store in memory cache (TTL 24h)
             C-->>CLI: Return findings
         end
     end

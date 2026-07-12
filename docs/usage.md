@@ -1,52 +1,138 @@
 # Usage Guide
 
-SentinelFlow is designed to be simple yet powerful. This guide covers the most common commands and use cases.
+SentinelFlow is designed to be simple yet powerful. This guide covers the most common commands and use cases for v1.0.
 
 ## Basic Scan
 
-To scan the current directory with all default scanners:
+Scan the current directory with all implemented scanners:
 
 ```bash
 sentinelflow scan --all .
 ```
 
+`--all` enables secrets, IaC, dependencies, SAST, container (when configured), and license scanning. It does **not** enable AI review in v1.0.
+
 ## Selecting Scanners
 
-You can enable specific scanners if you don't want to run everything:
+Enable specific scanners instead of running everything:
 
 ```bash
-sentinelflow scan --secrets .     # Just secrets
-sentinelflow scan --iac .         # Just Infrastructure-as-Code
-sentinelflow scan --deps .        # Just dependency vulnerabilities
+sentinelflow scan --secrets .          # Secret detection
+sentinelflow scan --iac .              # Terraform, Kubernetes, Dockerfile
+sentinelflow scan --deps .             # Dependency vulnerabilities (OSV)
+sentinelflow scan --sast .             # OWASP-oriented static patterns
+sentinelflow scan --license .          # License policy checks
+sentinelflow scan --container .        # Container image scan (requires Trivy)
+sentinelflow scan --container --container-image myapp:latest
+```
+
+Combine flags as needed:
+
+```bash
+sentinelflow scan --secrets --iac --deps --fail-on high
 ```
 
 ## Output Formats
 
-SentinelFlow supports multiple output formats for different needs:
-
-| Format           | Description                     | Use Case                     |
-| ---------------- | ------------------------------- | ---------------------------- |
-| `text` (default) | Human-readable console output   | Local development            |
-| `json`           | Machine-readable data           | Integration with other tools |
-| `sarif`          | Standard Static Analysis format | GitHub Security Tab          |
-| `markdown`       | Styled documentation format     | PR Comments / CI summaries   |
-
-Usage example:
+| Format | Description | Use case |
+| --- | --- | --- |
+| `text` (default) | Human-readable console output | Local development |
+| `json` | Machine-readable findings | Automation, dashboards |
+| `sarif` | Static Analysis Results Format | GitHub/GitLab Security tab |
+| `markdown` | Styled report | PR comments, wikis |
+| `html` | Browser-friendly report | Sharing with stakeholders |
 
 ```bash
 sentinelflow scan --all -f sarif -o report.sarif
+sentinelflow scan --all -f markdown -o report.md
 ```
 
 ## Failure Thresholds
 
-In CI/CD, you often want the build to fail if high-severity issues are found:
+Control when the process exits with code `1` (for CI gates):
 
 ```bash
-# Fail on critical or high findings (threshold is inclusive)
+# Fail on critical or high severity findings
 sentinelflow scan --all --fail-on high
 
-# Fail only on critical findings
+# Fail only on critical
 sentinelflow scan --all --fail-on critical
 ```
 
-Accepted values: `critical`, `high`, `medium`, `low`. Each level includes all severities above it.
+Accepted `--fail-on` values: `critical`, `high`, `medium`, `low`. Each level includes all severities above it.
+
+Additional gates are configured in `.sentinelflow.yaml`:
+
+```yaml
+fail_on:
+  severity: high
+  secrets: true              # Fail on any secret finding
+  policy_violations: true    # Fail on any OPA policy violation
+```
+
+All configured gates are evaluated independently — a single secret or policy violation fails the scan even if severity is below the threshold.
+
+## Policy Commands
+
+```bash
+sentinelflow policy list                    # List built-in policies
+sentinelflow policy validate policies/*.rego
+sentinelflow policy test policies/my.rego --input fixtures/input.json
+sentinelflow policy generate my-custom-rule
+```
+
+## Supply Chain
+
+Generate a CycloneDX SBOM:
+
+```bash
+sentinelflow sbom -o sbom.json
+```
+
+## Git Hooks
+
+Install a pre-commit hook for local shift-left scanning:
+
+```bash
+sentinelflow hook install
+sentinelflow hook uninstall
+```
+
+## Baselines
+
+Suppress known accepted findings during incremental adoption:
+
+```bash
+sentinelflow scan --all --baseline
+```
+
+Configure in `.sentinelflow.yaml`:
+
+```yaml
+baseline:
+  enabled: true
+  file: .sentinelflow/baseline.yaml
+```
+
+## Git History Secret Scanning
+
+Enable in configuration (requires `fetch-depth: 0` in CI checkout):
+
+```yaml
+scanners:
+  secrets:
+    scan_git_history: true
+    max_history_depth: 50
+
+git:
+  scan_history: true
+  history_depth: 50
+```
+
+## Verbose Mode
+
+```bash
+sentinelflow scan --all --verbose
+```
+
+Shows target path, enabled scanners, and per-scanner timing in the summary.

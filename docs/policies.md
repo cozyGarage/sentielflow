@@ -1,42 +1,99 @@
 # Policy-as-Code with Rego
 
-SentinelFlow empowers you to define custom security requirements using the **Rego** policy language.
+SentinelFlow lets you define custom security requirements using the **Rego** policy language and the embedded Open Policy Agent (OPA) engine.
 
 ## What is OPA/Rego?
 
-Open Policy Agent (OPA) is an open-source, general-purpose policy engine. Rego is its declarative language which allows you to write rules like "Is this resource allowed?".
+Open Policy Agent (OPA) is a general-purpose policy engine. Rego is its declarative language for expressing rules like "deny if this resource is misconfigured."
 
-## Anatomy of a Policy
+## Built-in policies
 
-A typical SentinelFlow policy looks like this:
+Shipped in the `policies/` directory:
+
+- `no-public-s3-buckets` — S3 public ACL and access-block checks
+- `no-privileged-containers` — Kubernetes privileged/root containers
+- `require-https` — TLS on ingress and endpoints
+- `enforce-encryption` — Encryption at rest for cloud storage
+
+List them:
+
+```bash
+sentinelflow policy list
+```
+
+## Anatomy of a policy
+
+Kubernetes policies receive parsed manifest YAML as `input`:
 
 ```rego
-package sentinelflow.iac.terraform
+package sentinelflow.kubernetes
 
-# Deny if an S3 bucket has ACL set to public-read
-deny[msg] {
-    resource := input.resources[_]
-    resource.type == "aws_s3_bucket"
-    resource.properties.acl == "public-read"
-    msg := sprintf("S3 bucket '%v' is publicly accessible", [resource.name])
+deny_privileged[msg] {
+    input.kind == "Pod"
+    container := input.spec.containers[_]
+    container.securityContext.privileged == true
+    msg := sprintf("Container '%s' is running in privileged mode", [container.name])
 }
 ```
 
-## How to Author Policies
+Terraform policies receive `input.resource_changes[]` built from `.tf` files:
 
-1.  **Create a Rego file**: Save it in the `policies/` directory.
-2.  **Define the package**: Use the standard `sentinelflow` namespace.
-3.  **Define a `deny` rule**: SentinelFlow looks for any `deny` findings.
-4.  **List and generate policies**:
-    ```bash
-    sentinelflow policy list
-    sentinelflow policy generate my-rule
-    ```
+```rego
+package sentinelflow.s3
 
-    Policy validation and testing commands are planned but not yet available in the CLI.
+deny_public_buckets[msg] {
+    resource := input.resource_changes[_]
+    resource.type == "aws_s3_bucket"
+    resource.change.after.acl == "public-read"
+    msg := sprintf("S3 bucket '%s' has public-read ACL", [resource.name])
+}
+```
 
-## Best Practices
+## Authoring custom policies
 
-- **Granular Rules**: Write one rule per security requirement.
-- **Helper Functions**: Use functions for repetitive logic (e.g., checking if a port is in a range).
-- **Severity Mapping**: Use metadata to assign severity scores to your custom rules.
+1. Create a `.rego` file in `policies/` or `.sentinelflow/policies/`.
+2. Use the `sentinelflow.*` package namespace.
+3. Define rules that produce violation messages (strings or `{msg, resource}` objects).
+4. Add `# severity: critical|high|medium|low` in METADATA comments for finding severity.
+
+Generate a starter template:
+
+```bash
+sentinelflow policy generate my-rule
+```
+
+## Validate and test
+
+```bash
+# Syntax check
+sentinelflow policy validate policies/my-rule.rego
+
+# Evaluate against sample input
+sentinelflow policy test policies/my-rule.rego --input test/fixtures/input.json
+```
+
+The CI **Policy Validation** job runs `policy validate` on all shipped policies.
+
+## Configuration
+
+```yaml
+policies:
+  enabled: true
+  files:
+    - policies/*.rego
+    - .sentinelflow/policies/*.rego
+```
+
+Enable policy failure gates:
+
+```yaml
+fail_on:
+  policy_violations: true
+```
+
+## Best practices
+
+- One concern per policy file for easier testing and ownership.
+- Use METADATA comments for title and severity.
+- Keep input shapes aligned with how SentinelFlow collects K8s YAML and Terraform resources.
+- Test policies with `policy test` before enabling in CI.

@@ -1,63 +1,116 @@
 # Scanner Implementation Details
 
-This guide explains the technical implementation of each scanner in SentinelFlow.
+This guide explains how each scanner in SentinelFlow v1.0 works.
 
 ## 1. Secret Scanner (`internal/scanner/secrets`)
 
-### Detection Mechanism
+### Detection
 
-The secret scanner uses a three-tier detection approach:
+1. **Regex matching** — Patterns for AWS, GCP, GitHub, Stripe, and other common credential formats.
+2. **Entropy analysis** — Shannon entropy threshold (default `4.5`) for high-randomness strings.
+3. **Keyword heuristics** — Context around assignments (`password=`, `token=`, etc.).
+4. **Custom patterns** — Optional `.sentinelflow/patterns.yaml` for org-specific rules.
 
-1.  **Regex Matching**: Predefined patterns for known keys (AWS, GCP, GitHub).
-2.  **Entropy Analysis**: Shannon entropy calculation to detect high-randomness strings that don't match known patterns.
-3.  **Keyword Heuristics**: Filtering based on context (e.g., assignment to variables like `password` or `token`).
+### Git history
 
-### Obfuscation
+When `scan_git_history` or `git.scan_history` is enabled, the scanner walks recent commits with `git log` / `git show` and applies the same rules. Allowlist patterns apply to historical paths.
 
-SentinelFlow automatically masks secrets in reports using a standard masking algorithm to prevent the report itself from becoming a security risk.
+### Redaction
+
+Findings mask secret values in snippets using the shared `redact` package — reports never echo raw credentials.
 
 ---
 
 ## 2. IaC Scanner (`internal/scanner/iac`)
 
-### Supported Frameworks
+### Frameworks
 
-- **Terraform**: Parses `.tf` files to identify insecure resource configurations.
-- **Kubernetes**: Scans manifests for privileged pods, insecure RBAC, and missing resource limits.
-- **Dockerfile**: Checks for root usage, missing healthchecks, and insecure package management.
+| Framework | Files | Checks |
+| --- | --- | --- |
+| Terraform | `.tf` | Public S3 ACLs, open security groups, unencrypted RDS, etc. |
+| Kubernetes | `.yaml`, `.yml` | Privileged containers, root users, host namespaces, wildcard RBAC |
+| Dockerfile | `Dockerfile`, `*.dockerfile` | Root user, `latest` tags, curl-to-bash, missing HEALTHCHECK |
 
-### Technical Implementation
+### Implementation
 
-We use custom parsers and AST (Abstract Syntax Tree) traversal to understand the structure of the configuration rather than just doing simple string searches.
+Line- and block-based parsing with regex rules and multi-line checks. Snippets in reports are passed through `redact.Snippet` for safe output.
 
 ---
 
 ## 3. Dependency Scanner (`internal/scanner/dependencies`)
 
-### Data Sourcing
+### Data source
 
-SentinelFlow integrates with **OSV (Open Source Vulnerabilities)**, which aggregates data from:
+Queries the [OSV API](https://osv.dev/) for Go, npm, pip, Maven, and Cargo ecosystems (auto-detected from lockfiles and manifests).
 
-- GitHub Advisory Database
-- PyPa (Python)
-- Go Vulnerability Database
-- Global CVE feed
+### Supported files
 
-### Efficient Scanning
+`go.mod`, `package.json`, `requirements.txt`, `pom.xml`, `Cargo.toml`, and related lockfiles.
 
-We scan lockfiles (e.g., `go.sum`, `package-lock.json`) rather than the entire `node_modules` or `vendor` folders. This is significantly faster and more accurate as it captures the exact versions resolved by your package manager.
+### Filtering
+
+- Minimum severity from config (`scanners.dependencies.severity`)
+- `ignore_dev` to skip dev dependencies
+- `ignore_cves` — accepts CVE, GHSA, GO-, and OSV IDs
 
 ---
 
-## 4. Policy Engine (`internal/scanner/policy`)
+## 4. SAST Scanner (`internal/scanner/sast`)
 
-### OPA Integration
+OWASP-oriented regex rules for SQL injection, XSS, path traversal, SSRF, and command injection patterns across common languages (Go, JS/TS, Python, Java, PHP, Ruby, etc.).
 
-The engine embeds Open Policy Agent as a library. This allows us to compile and execute Rego policies with minimal overhead.
+Concurrency is capped (8 workers) to avoid resource exhaustion on large trees.
 
-### Built-in Policies
+---
 
-- `no-public-s3-buckets`: Prevents public access to S3.
-- `no-privileged-containers`: Blocks containers running in privileged mode.
-- `require-https`: Ensures all ingress and endpoints use TLS.
-- `enforce-encryption`: Checks for `encrypted: true` on storage resources.
+## 5. Container Scanner (`internal/scanner/container`)
+
+Wraps [Trivy](https://github.com/aquasecurity/trivy) when installed. Enable with `--container` and optionally `--container-image`. Used in CI via the composite action with `scan-container: true`.
+
+---
+
+## 6. License Scanner (`internal/scanner/license`)
+
+Parses dependency manifests and flags packages whose licenses match the denied list (default includes GPL-3.0, AGPL-3.0, SSPL-1.0).
+
+---
+
+## 7. Policy Engine (`internal/scanner/policy`)
+
+### OPA integration
+
+The engine embeds Open Policy Agent. At scan time it:
+
+1. Loads `.rego` files from `policies/` and configured globs
+2. Collects Kubernetes manifests and Terraform resources as OPA input
+3. Evaluates each policy and converts violations to findings
+
+### Built-in policies (`policies/`)
+
+| Policy | Description |
+| --- | --- |
+| `no-public-s3-buckets` | Blocks public S3 ACLs and missing public access blocks |
+| `no-privileged-containers` | Denies privileged K8s containers and missing `runAsNonRoot` |
+| `require-https` | Ensures TLS on ingress and load balancers |
+| `enforce-encryption` | Requires encryption at rest for S3, RDS, EBS, EFS |
+
+### CLI
+
+```bash
+sentinelflow policy validate policies/my.rego
+sentinelflow policy test policies/my.rego --input input.json
+```
+
+See [Policy Authoring](policies.md) for Rego examples.
+
+---
+
+## 8. SBOM (`internal/scanner/sbom`)
+
+Generates CycloneDX JSON from the project dependency tree via `sentinelflow sbom`.
+
+---
+
+## Planned (not in v1.0)
+
+- **AI code review** — Config and `--ai` flag exist; scanner not registered yet.

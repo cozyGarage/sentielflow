@@ -86,14 +86,11 @@ scanners:
 
 policies:
   enabled: true
-  builtin:
-    - no-public-s3-buckets
-    - no-privileged-containers
-    - require-https
 
 fail_on:
   severity: high
   secrets: true
+  policy_violations: true
 ```
 
 See [Configuration Reference](docs/configuration.md) for all options.
@@ -134,7 +131,7 @@ jobs:
 
 ```yaml
 sentinelflow:
-  image: golang:1.24
+  image: golang:1.25
   script:
     - go build -o sentinelflow ./cmd/sentinelflow
     - ./sentinelflow scan --all --format sarif -o gl-security-report.sarif
@@ -158,10 +155,12 @@ flowchart LR
 
     subgraph Engine
         SE[Scan Engine]
-        AD1[Secrets adapter]
-        AD2[IaC adapter]
-        AD3[Dependencies adapter]
-        AD4[Policy adapter OPA]
+        AD1[Secrets]
+        AD2[IaC]
+        AD3[Dependencies OSV]
+        AD4[SAST]
+        AD5[Policy OPA]
+        AD6[License]
     end
 
     subgraph Output
@@ -172,8 +171,8 @@ flowchart LR
 
     SRC --> SE
     CFG --> SE
-    SE --> AD1 & AD2 & AD3 & AD4
-    AD1 & AD2 & AD3 & AD4 --> SE
+    SE --> AD1 & AD2 & AD3 & AD4 & AD5 & AD6
+    AD1 & AD2 & AD3 & AD4 & AD5 & AD6 --> SE
     SE --> SARIF --> GH
     SE --> MD
 ```
@@ -181,7 +180,7 @@ flowchart LR
 | Layer | Responsibility |
 | --- | --- |
 | **Scan engine** | File discovery, concurrent scanner dispatch, result aggregation |
-| **Adapters** | Secrets, IaC (Terraform/K8s/Dockerfile), dependencies (OSV), OPA policies |
+| **Adapters** | Secrets, IaC, dependencies (OSV), SAST, license, OPA policies |
 | **Reporter** | SARIF, JSON, Markdown, HTML — SARIF uploads integrate with GitHub Advanced Security |
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) and [docs/architecture.md](docs/architecture.md) for deeper diagrams.
@@ -202,12 +201,15 @@ SentinelFlow is designed as a **shift-left security gate** suitable for regulate
 
 ## Scanners
 
-| Scanner | Description |
-| --- | --- |
-| **Secrets** | Regex patterns, entropy analysis, and keyword heuristics |
-| **IaC** | Terraform, Kubernetes manifests, and Dockerfiles |
-| **Dependencies** | Lockfile parsing with OSV vulnerability lookup |
-| **Policy** | Built-in and custom OPA/Rego policies |
+| Scanner | Flag | Description |
+| --- | --- | --- |
+| **Secrets** | `--secrets` | Regex, entropy, git history |
+| **IaC** | `--iac` | Terraform, Kubernetes, Dockerfile |
+| **Dependencies** | `--deps` | OSV vulnerability lookup |
+| **SAST** | `--sast` | OWASP-oriented static patterns |
+| **Container** | `--container` | Trivy image scanning |
+| **License** | `--license` | Denied license detection |
+| **Policy** | (config) | OPA/Rego policy enforcement |
 
 ## CLI Commands
 
@@ -215,8 +217,12 @@ SentinelFlow is designed as a **shift-left security gate** suitable for regulate
 | --- | --- |
 | `sentinelflow scan` | Run security scanners |
 | `sentinelflow init` | Create default configuration |
+| `sentinelflow sbom` | Generate CycloneDX SBOM |
 | `sentinelflow policy list` | List built-in policies |
+| `sentinelflow policy validate` | Validate Rego policy syntax |
+| `sentinelflow policy test` | Test a policy against input JSON |
 | `sentinelflow policy generate` | Create a new policy template |
+| `sentinelflow hook install` | Install pre-commit hook |
 | `sentinelflow version` | Print version information |
 
 ## Documentation

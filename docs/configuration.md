@@ -40,7 +40,38 @@ Run `sentinelflow init` to generate a starter configuration.
 | `ecosystems` | []string | `["auto"]` | Package ecosystems to scan |
 | `severity` | string | `medium` | Minimum severity to report |
 | `ignore_dev` | bool | `false` | Skip dev dependencies |
-| `ignore_cves` | []string | — | CVE IDs to ignore |
+| `ignore_cves` | []string | — | CVE, GHSA, GO-, or OSV IDs to ignore |
+
+### SAST (`scanners.sast`)
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `enabled` | bool | `false` | Enable SAST scanning |
+| `severity` | string | `medium` | Minimum severity to report |
+| `skip_rules` | []string | — | Rule IDs to ignore |
+
+### Container (`scanners.container`)
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `enabled` | bool | `false` | Enable container scanning (requires Trivy) |
+| `image` | string | — | Container image reference |
+| `severity` | string | `high` | Minimum severity to report |
+
+### License (`scanners.license`)
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `enabled` | bool | `false` | Enable license policy scanning |
+| `denied` | []string | GPL-3.0, AGPL-3.0, SSPL-1.0 | Licenses that fail the scan |
+| `allowed` | []string | — | If set, only these licenses are permitted |
+
+### Baseline (`baseline`)
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `enabled` | bool | `false` | Filter findings against a baseline file |
+| `file` | string | `.sentinelflow/baseline.yaml` | Baseline file path |
 
 ### AI (`scanners.ai`)
 
@@ -57,8 +88,8 @@ Run `sentinelflow init` to generate a starter configuration.
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `enabled` | bool | `true` | Enable policy scanning |
-| `files` | []string | `.sentinelflow/policies/*.rego` | Custom policy file globs |
-| `builtin` | []string | see defaults | Built-in policy names |
+| `files` | []string | `policies/*.rego`, `.sentinelflow/policies/*.rego` | Custom policy file globs |
+| `builtin` | []string | see defaults | Documented built-in policy names (loaded from `policies/`) |
 
 Built-in policies:
 

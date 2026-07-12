@@ -69,7 +69,8 @@ For the same repository, use a local path:
 | `fail-on` | `high` | Pipeline failure threshold |
 | `format` | `sarif` | Report format |
 | `output` | `report.sarif` | Output file path |
-| `go-version` | `1.25` | Go version for building |
+
+Go version is read from the repository's `go.mod` toolchain when building from source.
 
 ### Container scanning in CI
 
@@ -107,7 +108,7 @@ stages:
 
 sentinelflow:
   stage: security
-  image: golang:1.24
+  image: golang:1.25
   script:
     - go build -o sentinelflow ./cmd/sentinelflow
     - ./sentinelflow scan --all --format sarif -o gl-sast-report.sarif --fail-on high
