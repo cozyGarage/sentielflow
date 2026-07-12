@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cozygarage/sentinelflow/internal/adapter"
+	"github.com/cozygarage/sentinelflow/internal/baseline"
 	"github.com/cozygarage/sentinelflow/internal/config"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
@@ -55,6 +56,15 @@ func NewEngine(cfg *config.Config) *Engine {
 	}
 	if cfg.Policies.Enabled {
 		e.scanners = append(e.scanners, adapter.NewPolicyAdapter(cfg))
+	}
+	if cfg.Scanners.SAST.Enabled {
+		e.scanners = append(e.scanners, adapter.NewSASTAdapter(cfg))
+	}
+	if cfg.Scanners.Container.Enabled {
+		e.scanners = append(e.scanners, adapter.NewContainerAdapter(cfg))
+	}
+	if cfg.Scanners.License.Enabled {
+		e.scanners = append(e.scanners, adapter.NewLicenseAdapter(cfg))
 	}
 
 	return e
@@ -132,6 +142,17 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 	}
 
 	wg.Wait()
+
+	// Apply baseline filtering if enabled
+	if e.config.Baseline.Enabled {
+		blPath := e.config.Baseline.File
+		if blPath == "" {
+			blPath = baseline.DefaultPath
+		}
+		if bl, err := baseline.Load(blPath); err == nil {
+			result.Findings = baseline.Filter(result.Findings, bl)
+		}
+	}
 
 	result.Metadata.EndTime = time.Now()
 	result.Duration = time.Since(startTime)

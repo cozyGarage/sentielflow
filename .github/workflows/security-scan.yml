@@ -17,23 +17,30 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Full history for git scanning
+          fetch-depth: 0
 
-      - name: Run SentinelFlow
-        id: scan
-        uses: sentinelflow/action@v1
+      - name: Setup Go
+        uses: actions/setup-go@v5
         with:
-          scan-secrets: true
-          scan-iac: true
-          scan-dependencies: true
-          fail-on: high
-          output-format: sarif
+          go-version: '1.24'
+
+      - name: Build SentinelFlow
+        run: go build -o sentinelflow ./cmd/sentinelflow
+
+      - name: Run SentinelFlow scan
+        id: scan
+        run: |
+          ./sentinelflow scan --secrets --iac --deps \
+            --fail-on high \
+            --format sarif \
+            -o report.sarif
+        continue-on-error: true
 
       - name: Upload SARIF to GitHub Security
         if: always()
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: report.sarif
           category: sentinelflow
@@ -41,30 +48,30 @@ jobs:
       - name: Generate Markdown Report
         if: github.event_name == 'pull_request'
         run: |
-          sentinelflow scan --all --format markdown -o report.md
+          ./sentinelflow scan --secrets --iac --deps \
+            --format markdown -o report.md || true
 
       - name: Comment PR
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v6
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
+            if (!fs.existsSync('report.md')) return;
             const report = fs.readFileSync('report.md', 'utf8');
 
-            // Find existing comment
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
             });
 
-            const botComment = comments.find(comment => 
+            const botComment = comments.find(comment =>
               comment.user.type === 'Bot' &&
               comment.body.includes('SentinelFlow Security Scan Report')
             );
 
             if (botComment) {
-              // Update existing comment
               await github.rest.issues.updateComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -72,7 +79,6 @@ jobs:
                 body: report
               });
             } else {
-              // Create new comment
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -80,3 +86,7 @@ jobs:
                 body: report
               });
             }
+
+      - name: Fail on findings
+        if: steps.scan.outcome == 'failure'
+        run: exit 1

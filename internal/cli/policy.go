@@ -1,12 +1,16 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
+
+	"github.com/cozygarage/sentinelflow/internal/scanner/policy"
 )
 
 var policyCmd = &cobra.Command{
@@ -79,8 +83,7 @@ var policyListCmd = &cobra.Command{
 	},
 }
 
-// Note: validate and test commands are commented out pending full OPA engine implementation
-/*
+// policyValidateCmd validates a Rego policy file
 var policyValidateCmd = &cobra.Command{
 	Use:   "validate [file]",
 	Short: "Validate a policy file",
@@ -93,14 +96,17 @@ var policyValidateCmd = &cobra.Command{
 			return fmt.Errorf("failed to read policy file: %w", err)
 		}
 
-		// TODO: Implement OPA validation
-		_ = content
+		engine := policy.NewOPAEngine()
+		if err := engine.ValidatePolicy(string(content)); err != nil {
+			return fmt.Errorf("policy validation failed: %w", err)
+		}
 
 		fmt.Printf("%s Policy is valid: %s\n", color.GreenString("✓"), policyFile)
 		return nil
 	},
 }
 
+// policyTestCmd tests a policy against sample input
 var policyTestCmd = &cobra.Command{
 	Use:   "test [policy] [input-file]",
 	Short: "Test a policy against sample input",
@@ -109,15 +115,49 @@ var policyTestCmd = &cobra.Command{
 		policyFile := args[0]
 		inputFile := args[1]
 
-		// TODO: Implement OPA testing
-		_ = policyFile
-		_ = inputFile
+		content, err := os.ReadFile(policyFile)
+		if err != nil {
+			return fmt.Errorf("failed to read policy file: %w", err)
+		}
 
-		fmt.Printf("%s No policy violations found\n", color.GreenString("✓"))
-		return nil
+		inputData, err := os.ReadFile(inputFile)
+		if err != nil {
+			return fmt.Errorf("failed to read input file: %w", err)
+		}
+
+		var input interface{}
+		if err := json.Unmarshal(inputData, &input); err != nil {
+			return fmt.Errorf("failed to parse input JSON: %w", err)
+		}
+
+		engine := policy.NewOPAEngine()
+		policyName := strings.TrimSuffix(filepath.Base(policyFile), ".rego")
+		if err := engine.LoadPolicy(policyName, string(content)); err != nil {
+			return fmt.Errorf("failed to load policy: %w", err)
+		}
+
+		result, err := engine.EvaluatePolicy(policyName, input)
+		if err != nil {
+			return fmt.Errorf("policy evaluation failed: %w", err)
+		}
+
+		if len(result.Violations) == 0 {
+			fmt.Printf("%s No policy violations found\n", color.GreenString("✓"))
+			return nil
+		}
+
+		fmt.Printf("%s %d policy violation(s) found:\n", color.RedString("✗"), len(result.Violations))
+		for _, v := range result.Violations {
+			fmt.Printf("  • %s", v.Message)
+			if v.Resource != "" {
+				fmt.Printf(" (resource: %s)", v.Resource)
+			}
+			fmt.Println()
+		}
+
+		return fmt.Errorf("policy test failed with %d violation(s)", len(result.Violations))
 	},
 }
-*/
 
 var policyGenerateCmd = &cobra.Command{
 	Use:   "generate [name]",
@@ -165,7 +205,7 @@ violation[msg] {
 
 func init() {
 	policyCmd.AddCommand(policyListCmd)
-	// policyCmd.AddCommand(policyValidateCmd)  // TODO: uncomment when OPA engine is fully implemented
-	// policyCmd.AddCommand(policyTestCmd)      // TODO: uncomment when OPA engine is fully implemented
+	policyCmd.AddCommand(policyValidateCmd)
+	policyCmd.AddCommand(policyTestCmd)
 	policyCmd.AddCommand(policyGenerateCmd)
 }

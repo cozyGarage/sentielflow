@@ -21,10 +21,15 @@ var (
 	scanIaC          bool
 	scanDependencies bool
 	scanAI           bool
+	scanSAST         bool
+	scanContainer    bool
+	scanLicense      bool
 	scanAll          bool
 	scanPath         string
 	outputFile       string
 	failOnSeverity   string
+	containerImage   string
+	useBaseline      bool
 )
 
 var scanCmd = &cobra.Command{
@@ -36,6 +41,9 @@ Available scanners:
   --secrets      Scan for leaked secrets and API keys
   --iac          Scan Infrastructure-as-Code files
   --deps         Scan dependencies for vulnerabilities
+  --sast         Static application security testing (OWASP patterns)
+  --container    Scan container images (requires Trivy)
+  --license      Check dependency licenses against policy
   --ai           AI-powered code security review
   --all          Enable all scanners
 
@@ -51,6 +59,11 @@ func init() {
 	scanCmd.Flags().BoolVar(&scanSecrets, "secrets", false, "scan for secrets")
 	scanCmd.Flags().BoolVar(&scanIaC, "iac", false, "scan Infrastructure-as-Code")
 	scanCmd.Flags().BoolVar(&scanDependencies, "deps", false, "scan dependencies")
+	scanCmd.Flags().BoolVar(&scanSAST, "sast", false, "static application security testing")
+	scanCmd.Flags().BoolVar(&scanContainer, "container", false, "scan container images")
+	scanCmd.Flags().BoolVar(&scanLicense, "license", false, "check dependency licenses")
+	scanCmd.Flags().StringVar(&containerImage, "container-image", "", "container image to scan")
+	scanCmd.Flags().BoolVar(&useBaseline, "baseline", false, "apply baseline filtering")
 	scanCmd.Flags().BoolVar(&scanAI, "ai", false, "AI-powered code review")
 	scanCmd.Flags().BoolVar(&scanAll, "all", false, "enable all scanners")
 	scanCmd.Flags().StringVarP(&outputFile, "output", "o", "", "output file path")
@@ -137,16 +150,31 @@ func applyScanFlags(cfg *config.Config) {
 		cfg.Scanners.Secrets.Enabled = true
 		cfg.Scanners.IaC.Enabled = true
 		cfg.Scanners.Dependencies.Enabled = true
+		cfg.Scanners.SAST.Enabled = true
+		cfg.Scanners.Container.Enabled = true
+		cfg.Scanners.License.Enabled = true
 		cfg.Scanners.AI.Enabled = true
 		return
 	}
 
 	// If specific flags are set, only enable those
-	if scanSecrets || scanIaC || scanDependencies || scanAI {
+	if scanSecrets || scanIaC || scanDependencies || scanAI || scanSAST || scanContainer || scanLicense {
 		cfg.Scanners.Secrets.Enabled = scanSecrets
 		cfg.Scanners.IaC.Enabled = scanIaC
 		cfg.Scanners.Dependencies.Enabled = scanDependencies
 		cfg.Scanners.AI.Enabled = scanAI
+		cfg.Scanners.SAST.Enabled = scanSAST
+		cfg.Scanners.Container.Enabled = scanContainer
+		cfg.Scanners.License.Enabled = scanLicense
+	}
+
+	if containerImage != "" {
+		cfg.Scanners.Container.Enabled = true
+		cfg.Scanners.Container.Image = containerImage
+	}
+
+	if useBaseline {
+		cfg.Baseline.Enabled = true
 	}
 
 	// Override fail-on severity
@@ -172,6 +200,15 @@ func printScanHeader(path string, cfg *config.Config) {
 	}
 	if cfg.Scanners.Dependencies.Enabled {
 		scanners = append(scanners, "dependencies")
+	}
+	if cfg.Scanners.SAST.Enabled {
+		scanners = append(scanners, "sast")
+	}
+	if cfg.Scanners.Container.Enabled {
+		scanners = append(scanners, "container")
+	}
+	if cfg.Scanners.License.Enabled {
+		scanners = append(scanners, "license")
 	}
 	if cfg.Scanners.AI.Enabled {
 		scanners = append(scanners, "ai")

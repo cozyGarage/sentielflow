@@ -1,36 +1,31 @@
-# SentinelFlow 🛡️
+# SentinelFlow
 
-![SentinelFlow Banner](docs/assets/banner.png)
+**CI/CD Security Gatekeeper**
 
-<p align="center">
-  <img src="docs/assets/logo.png" alt="SentinelFlow Logo" width="200"/>
-</p>
+SentinelFlow is a security scanning tool that integrates with CI/CD pipelines to detect leaked secrets, insecure infrastructure configurations, vulnerable dependencies, and policy violations.
 
-**AI-Driven CI/CD Security Gatekeeper**
+## Features
 
-SentinelFlow is a comprehensive security scanning tool that integrates with CI/CD pipelines to automatically detect security vulnerabilities, leaked secrets, insecure configurations, and more.
+- **Secret Scanning**: Detect leaked API keys, tokens, passwords, and credentials
+- **Infrastructure-as-Code**: Scan Terraform, Kubernetes, and Dockerfile configurations
+- **Dependency Analysis**: Check for vulnerable dependencies via the OSV API
+- **Policy Enforcement**: OPA-based policy-as-code validation
+- **Multiple Report Formats**: Text, Markdown, SARIF, JSON, and HTML output
 
-## ✨ Features
+> **Note:** AI-powered code review is configured in `.sentinelflow.yaml` but not yet implemented in the scanner engine.
 
-- **🔐 Secret Scanning**: Detect leaked API keys, tokens, passwords, and credentials
-- **🏗️ Infrastructure-as-Code**: Scan Terraform, Kubernetes, Dockerfile, CloudFormation
-- **📦 Dependency Analysis**: Check for vulnerable dependencies across multiple ecosystems
-- **🤖 AI Code Review**: LLM-powered security pattern detection (optional)
-- **📜 Policy Enforcement**: OPA-based policy-as-code validation
-- **📊 Multiple Report Formats**: Markdown, SARIF, JSON, HTML output
-
-## 🚀 Quick Start
+## Quick Start
 
 ### Installation
 
 ```bash
-# Using Go install
-go install github.com/cozygarage/sentinelflow/cmd/sentinelflow@latest
-
-# Or build from source
+# Build from source
 git clone https://github.com/cozygarage/sentinelflow
 cd sentinelflow
 go build -o sentinelflow ./cmd/sentinelflow
+
+# Or use Make (Windows: sentinelflow.exe)
+make build
 ```
 
 ### Basic Usage
@@ -52,9 +47,9 @@ sentinelflow scan --all --format sarif -o report.sarif
 sentinelflow scan --all --format markdown -o report.md
 ```
 
-## 📋 Configuration
+## Configuration
 
-Create a `.sentinelflow.yaml` file in your project root:
+Create a `.sentinelflow.yaml` file in your project root (or run `sentinelflow init`):
 
 ```yaml
 version: "1.0"
@@ -81,9 +76,7 @@ scanners:
     severity: medium
 
   ai:
-    enabled: false
-    provider: openai
-    model: gpt-4
+    enabled: false  # Not yet implemented
 
 policies:
   enabled: true
@@ -97,7 +90,9 @@ fail_on:
   secrets: true
 ```
 
-## 🔧 CI/CD Integration
+See [Configuration Reference](docs/configuration.md) for all options.
+
+## CI/CD Integration
 
 ### GitHub Actions
 
@@ -108,19 +103,25 @@ on: [pull_request]
 jobs:
   security:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - name: Run SentinelFlow
-        uses: sentinelflow/action@v1
+      - uses: actions/setup-go@v5
         with:
-          scan-secrets: true
-          scan-iac: true
-          scan-dependencies: true
-          fail-on: high
+          go-version: "1.24"
+
+      - name: Build SentinelFlow
+        run: go build -o sentinelflow ./cmd/sentinelflow
+
+      - name: Run scan
+        run: ./sentinelflow scan --all --format sarif -o report.sarif --fail-on high
 
       - name: Upload SARIF
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
         with:
           sarif_file: report.sarif
 ```
@@ -129,64 +130,53 @@ jobs:
 
 ```yaml
 sentinelflow:
-  image: sentinelflow/scanner:latest
+  image: golang:1.24
   script:
-    - sentinelflow scan --all --format sarif -o gl-security-report.sarif
+    - go build -o sentinelflow ./cmd/sentinelflow
+    - ./sentinelflow scan --all --format sarif -o gl-security-report.sarif
   artifacts:
     reports:
       sast: gl-security-report.sarif
 ```
 
-## 🔍 Scanners
+See [CI/CD Integration](docs/cicd-integration.md) for more examples.
 
-### Secret Scanner
+## Scanners
 
-- Over 100+ secret patterns (AWS, GCP, Azure, GitHub, etc.)
-- Entropy-based detection
-- Git history scanning
-- Customizable patterns
+| Scanner | Description |
+| --- | --- |
+| **Secrets** | Regex patterns, entropy analysis, and keyword heuristics |
+| **IaC** | Terraform, Kubernetes manifests, and Dockerfiles |
+| **Dependencies** | Lockfile parsing with OSV vulnerability lookup |
+| **Policy** | Built-in and custom OPA/Rego policies |
 
-### IaC Scanner
+## CLI Commands
 
-- **Terraform**: Security misconfigurations, hardcoded secrets, public resources
-- **Kubernetes**: Privileged containers, RBAC issues, security contexts
-- **Dockerfile**: Base image vulnerabilities, user permissions, secrets
-- **CloudFormation**: AWS security best practices
+| Command | Description |
+| --- | --- |
+| `sentinelflow scan` | Run security scanners |
+| `sentinelflow init` | Create default configuration |
+| `sentinelflow policy list` | List built-in policies |
+| `sentinelflow policy generate` | Create a new policy template |
+| `sentinelflow version` | Print version information |
 
-### Dependency Scanner
+## Documentation
 
-- Multi-ecosystem support: Go, npm, pip, Maven, Cargo
-- NVD/CVE database integration
-- SBOM generation
-- Version comparison and fix recommendations
-
-### AI Code Review (Optional)
-
-- LLM-powered security analysis
-- OWASP Top 10 detection
-- Context-aware suggestions
-- Multi-language support
-
-### Policy Engine
-
-- OPA (Open Policy Agent) integration
-- Built-in security policies
-- Custom Rego policies
-- Compliance mapping
-
-## 📖 Documentation
-
-- [Installation Guide](docs/installation.md)
+- [Usage Guide](docs/usage.md)
 - [Configuration Reference](docs/configuration.md)
 - [Scanner Documentation](docs/scanners.md)
 - [CI/CD Integration](docs/cicd-integration.md)
 - [Writing Custom Policies](docs/policies.md)
+- [Architecture](docs/architecture.md)
 
-## 🛠️ Development
+## Development
 
 ```bash
 # Run tests
 go test ./...
+
+# Run integration tests
+go test -tags=integration ./test/...
 
 # Build
 go build -o sentinelflow ./cmd/sentinelflow
@@ -195,32 +185,21 @@ go build -o sentinelflow ./cmd/sentinelflow
 ./sentinelflow scan --all --verbose
 ```
 
-## 🔒 Security
-
-SentinelFlow takes security seriously:
+## Security
 
 - **No secret storage**: Never stores or transmits discovered secrets
 - **Local processing**: All scanning happens locally by default
-- **Minimal permissions**: CI integration requires only read access
-- **Audit logging**: All scans are logged with timestamps
+- **Minimal permissions**: CI integration requires only read access to code
 
-## 📄 License
+## Contributing
 
-MIT License - see [LICENSE](LICENSE) for details
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-## 🤝 Contributing
-
-Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-## 🌟 Acknowledgments
+## Acknowledgments
 
 Built with:
 
-- [Cobra](https://github.com/spf13/cobra) - CLI framework
-- [Viper](https://github.com/spf13/viper) - Configuration management
-- [OPA](https://www.openpolicyagent.org/) - Policy engine
-- [go-sarif](https://github.com/owenrumney/go-sarif) - SARIF support
-
----
-
-**Made with ❤️ by the SentinelFlow team**
+- [Cobra](https://github.com/spf13/cobra) — CLI framework
+- [Viper](https://github.com/spf13/viper) — Configuration management
+- [OPA](https://www.openpolicyagent.org/) — Policy engine
+- [go-sarif](https://github.com/owenrumney/go-sarif) — SARIF support

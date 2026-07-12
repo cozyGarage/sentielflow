@@ -42,6 +42,11 @@ sentinelflow scan --all -f sarif -o report.sarif
 In CI/CD, you often want the build to fail if high-severity issues are found:
 
 ```bash
-# Fail only on critical or high findings
-sentinelflow scan --all --fail-on critical,high
+# Fail on critical or high findings (threshold is inclusive)
+sentinelflow scan --all --fail-on high
+
+# Fail only on critical findings
+sentinelflow scan --all --fail-on critical
 ```
+
+Accepted values: `critical`, `high`, `medium`, `low`. Each level includes all severities above it.

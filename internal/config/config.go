@@ -16,6 +16,7 @@ type Config struct {
 	Reporting ReportConfig   `yaml:"reporting" mapstructure:"reporting"`
 	FailOn    FailOnConfig   `yaml:"fail_on" mapstructure:"fail_on"`
 	Git       GitConfig      `yaml:"git" mapstructure:"git"`
+	Baseline  BaselineConfig `yaml:"baseline" mapstructure:"baseline"`
 }
 
 // ScannersConfig contains settings for all scanners
@@ -23,6 +24,9 @@ type ScannersConfig struct {
 	Secrets      SecretsConfig      `yaml:"secrets" mapstructure:"secrets"`
 	IaC          IaCConfig          `yaml:"iac" mapstructure:"iac"`
 	Dependencies DependenciesConfig `yaml:"dependencies" mapstructure:"dependencies"`
+	SAST         SASTConfig         `yaml:"sast" mapstructure:"sast"`
+	Container    ContainerConfig    `yaml:"container" mapstructure:"container"`
+	License      LicenseConfig      `yaml:"license" mapstructure:"license"`
 	AI           AIConfig           `yaml:"ai" mapstructure:"ai"`
 }
 
@@ -51,6 +55,33 @@ type DependenciesConfig struct {
 	Severity   string   `yaml:"severity" mapstructure:"severity"`
 	IgnoreDev  bool     `yaml:"ignore_dev" mapstructure:"ignore_dev"`
 	IgnoreCVEs []string `yaml:"ignore_cves" mapstructure:"ignore_cves"`
+}
+
+// SASTConfig configures static application security testing
+type SASTConfig struct {
+	Enabled   bool     `yaml:"enabled" mapstructure:"enabled"`
+	Severity  string   `yaml:"severity" mapstructure:"severity"`
+	SkipRules []string `yaml:"skip_rules" mapstructure:"skip_rules"`
+}
+
+// ContainerConfig configures container image scanning
+type ContainerConfig struct {
+	Enabled  bool   `yaml:"enabled" mapstructure:"enabled"`
+	Image    string `yaml:"image" mapstructure:"image"`
+	Severity string `yaml:"severity" mapstructure:"severity"`
+}
+
+// LicenseConfig configures license policy scanning
+type LicenseConfig struct {
+	Enabled bool     `yaml:"enabled" mapstructure:"enabled"`
+	Denied  []string `yaml:"denied" mapstructure:"denied"`
+	Allowed []string `yaml:"allowed" mapstructure:"allowed"`
+}
+
+// BaselineConfig configures finding baselines
+type BaselineConfig struct {
+	Enabled bool   `yaml:"enabled" mapstructure:"enabled"`
+	File    string `yaml:"file" mapstructure:"file"`
 }
 
 // AIConfig configures the AI-powered code review
@@ -142,6 +173,18 @@ func Default() *Config {
 				Severity:   "medium",
 				IgnoreDev:  false,
 			},
+			SAST: SASTConfig{
+				Enabled:  false,
+				Severity: "medium",
+			},
+			Container: ContainerConfig{
+				Enabled:  false,
+				Severity: "high",
+			},
+			License: LicenseConfig{
+				Enabled: false,
+				Denied:  []string{"GPL-3.0", "AGPL-3.0", "SSPL-1.0"},
+			},
 			AI: AIConfig{
 				Enabled:     false,
 				Provider:    "openai",
@@ -176,6 +219,10 @@ func Default() *Config {
 			ScanHistory:    false,
 			HistoryDepth:   50,
 			ScanStagedOnly: false,
+		},
+		Baseline: BaselineConfig{
+			Enabled: false,
+			File:    ".sentinelflow/baseline.yaml",
 		},
 	}
 }

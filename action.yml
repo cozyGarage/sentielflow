@@ -1,0 +1,87 @@
+name: 'SentinelFlow Security Scan'
+description: 'Run SentinelFlow security scanning in your CI/CD pipeline'
+author: 'SentinelFlow'
+
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+inputs:
+  scan-secrets:
+    description: 'Enable secret scanning'
+    required: false
+    default: 'true'
+  scan-iac:
+    description: 'Enable Infrastructure-as-Code scanning'
+    required: false
+    default: 'true'
+  scan-deps:
+    description: 'Enable dependency vulnerability scanning'
+    required: false
+    default: 'true'
+  scan-sast:
+    description: 'Enable SAST scanning'
+    required: false
+    default: 'false'
+  fail-on:
+    description: 'Fail on findings at or above this severity (critical, high, medium, low)'
+    required: false
+    default: 'high'
+  format:
+    description: 'Report output format (text, json, sarif, markdown)'
+    required: false
+    default: 'sarif'
+  output:
+    description: 'Output file path for the report'
+    required: false
+    default: 'report.sarif'
+  go-version:
+    description: 'Go version for building SentinelFlow'
+    required: false
+    default: '1.24'
+
+outputs:
+  findings-count:
+    description: 'Total number of findings'
+    value: ${{ steps.scan.outputs.findings-count }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ inputs.go-version }}
+
+    - name: Build SentinelFlow
+      shell: bash
+      run: |
+        go build -o sentinelflow ./cmd/sentinelflow
+        ./sentinelflow version
+
+    - name: Run security scan
+      id: scan
+      shell: bash
+      run: |
+        ARGS=""
+        if [ "${{ inputs.scan-secrets }}" = "true" ]; then ARGS="$ARGS --secrets"; fi
+        if [ "${{ inputs.scan-iac }}" = "true" ]; then ARGS="$ARGS --iac"; fi
+        if [ "${{ inputs.scan-deps }}" = "true" ]; then ARGS="$ARGS --deps"; fi
+        if [ "${{ inputs.scan-sast }}" = "true" ]; then ARGS="$ARGS --sast"; fi
+
+        set +e
+        ./sentinelflow scan $ARGS \
+          --fail-on ${{ inputs.fail-on }} \
+          --format ${{ inputs.format }} \
+          -o ${{ inputs.output }}
+        EXIT_CODE=$?
+        set -e
+
+        if [ -f "${{ inputs.output }}" ]; then
+          if [ "${{ inputs.format }}" = "json" ] || [ "${{ inputs.format }}" = "sarif" ]; then
+            COUNT=$(grep -o '"findings"' "${{ inputs.output }}" | wc -l || echo "0")
+            echo "findings-count=$COUNT" >> $GITHUB_OUTPUT
+          fi
+        fi
+
+        exit $EXIT_CODE

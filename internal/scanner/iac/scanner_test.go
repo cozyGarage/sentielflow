@@ -2,30 +2,43 @@ package iac
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/cozygarage/sentinelflow/internal/config"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
 
+func writeTempFile(t *testing.T, dir, name, content string) string {
+	t.Helper()
+
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	return path
+}
+
 func TestTerraformPublicS3(t *testing.T) {
 	cfg := &config.Config{}
 	scanner := NewTerraformScanner(cfg)
 
+	dir := t.TempDir()
 	content := `
 resource "aws_s3_bucket" "example" {
   bucket = "my-bucket"
   acl    = "public-read"
 }
 `
-
-	findings := scanner.Scan(context.Background(), content, "test.tf")
+	filePath := writeTempFile(t, dir, "test.tf", content)
+	findings := scanner.ScanFile(context.Background(), filePath, dir)
 
 	if len(findings) == 0 {
 		t.Fatal("Expected to find public S3 bucket violation")
 	}
 
-	// Should detect public ACL
 	found := false
 	for _, f := range findings {
 		if f.RuleID == "aws-s3-public-acl" {
@@ -45,6 +58,7 @@ func TestTerraformUnencryptedRDS(t *testing.T) {
 	cfg := &config.Config{}
 	scanner := NewTerraformScanner(cfg)
 
+	dir := t.TempDir()
 	content := `
 resource "aws_db_instance" "default" {
   allocated_storage    = 20
@@ -58,12 +72,12 @@ resource "aws_db_instance" "default" {
   storage_encrypted    = false
 }
 `
-
-	findings := scanner.Scan(context.Background(), content, "test.tf")
+	filePath := writeTempFile(t, dir, "test.tf", content)
+	findings := scanner.ScanFile(context.Background(), filePath, dir)
 
 	found := false
 	for _, f := range findings {
-		if f.RuleID == "aws-rds-unencrypted" {
+		if f.RuleID == "aws-rds-no-encryption" {
 			found = true
 		}
 	}
@@ -77,6 +91,7 @@ func TestKubernetesPrivilegedContainer(t *testing.T) {
 	cfg := &config.Config{}
 	scanner := NewKubernetesScanner(cfg)
 
+	dir := t.TempDir()
 	manifest := `
 apiVersion: v1
 kind: Pod
@@ -89,8 +104,8 @@ spec:
     securityContext:
       privileged: true
 `
-
-	findings := scanner.ScanManifest([]byte(manifest), "test.yaml")
+	filePath := writeTempFile(t, dir, "test.yaml", manifest)
+	findings := scanner.ScanFile(context.Background(), filePath, dir)
 
 	if len(findings) == 0 {
 		t.Fatal("Expected to find privileged container")
@@ -98,7 +113,7 @@ spec:
 
 	found := false
 	for _, f := range findings {
-		if f.Title == "Privileged Container" {
+		if f.Title == "Privileged Container Detected" {
 			found = true
 			if f.Severity != api.SeverityCritical {
 				t.Errorf("Expected critical severity, got %s", f.Severity)
@@ -115,6 +130,7 @@ func TestKubernetesRunAsRoot(t *testing.T) {
 	cfg := &config.Config{}
 	scanner := NewKubernetesScanner(cfg)
 
+	dir := t.TempDir()
 	manifest := `
 apiVersion: apps/v1
 kind: Deployment
@@ -126,11 +142,12 @@ spec:
       containers:
       - name: app
         image: nginx
+        securityContext:
+          runAsUser: 0
 `
+	filePath := writeTempFile(t, dir, "deployment.yaml", manifest)
+	findings := scanner.ScanFile(context.Background(), filePath, dir)
 
-	findings := scanner.ScanManifest([]byte(manifest), "deployment.yaml")
-
-	// Should detect missing runAsNonRoot
 	found := false
 	for _, f := range findings {
 		if f.Title == "Container Running as Root" {
@@ -147,11 +164,12 @@ func TestDockerfileLatestTag(t *testing.T) {
 	cfg := &config.Config{}
 	scanner := NewDockerfileScanner(cfg)
 
+	dir := t.TempDir()
 	content := `FROM nginx:latest
 RUN apt-get update
 `
-
-	findings := scanner.Scan(context.Background(), content, "Dockerfile")
+	filePath := writeTempFile(t, dir, "Dockerfile", content)
+	findings := scanner.ScanFile(context.Background(), filePath, dir)
 
 	found := false
 	for _, f := range findings {
@@ -172,16 +190,17 @@ func TestDockerfileMissingUser(t *testing.T) {
 	cfg := &config.Config{}
 	scanner := NewDockerfileScanner(cfg)
 
+	dir := t.TempDir()
 	content := `FROM nginx:1.21
 RUN apt-get update
 COPY . /app
 `
-
-	findings := scanner.Scan(context.Background(), content, "Dockerfile")
+	filePath := writeTempFile(t, dir, "Dockerfile", content)
+	findings := scanner.ScanFile(context.Background(), filePath, dir)
 
 	found := false
 	for _, f := range findings {
-		if f.RuleID == "no-user" {
+		if f.RuleID == "missing-user" {
 			found = true
 		}
 	}
@@ -195,15 +214,16 @@ func TestDockerfileExposedPort(t *testing.T) {
 	cfg := &config.Config{}
 	scanner := NewDockerfileScanner(cfg)
 
+	dir := t.TempDir()
 	content := `FROM nginx:1.21
 EXPOSE 22
 `
-
-	findings := scanner.Scan(context.Background(), content, "Dockerfile")
+	filePath := writeTempFile(t, dir, "Dockerfile", content)
+	findings := scanner.ScanFile(context.Background(), filePath, dir)
 
 	found := false
 	for _, f := range findings {
-		if f.RuleID == "exposed-port" {
+		if f.RuleID == "exposed-port-22" {
 			found = true
 		}
 	}

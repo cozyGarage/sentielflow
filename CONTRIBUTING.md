@@ -17,11 +17,11 @@ Thank you for your interest in contributing to SentinelFlow! We welcome contribu
 
 ## Development Environment
 
-SentinelFlow is built with Go 1.21+.
+SentinelFlow is built with Go 1.24+.
 
 ### Prerequisites
 
-- Go 1.21 or higher
+- Go 1.24 or higher
 - Docker (optional, for testing container builds)
 - Make (optional, for running helper scripts)
 

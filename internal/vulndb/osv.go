@@ -1,6 +1,7 @@
 package vulndb
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -92,21 +93,13 @@ func (s *OSVSource) Query(ctx context.Context, ecosystem, pkg, version string) (
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	// Make HTTP request
 	apiURL := s.baseURL + "/v1/query"
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", apiURL, nil)
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(reqBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Body = http.NoBody
-
-	// For querying by version, use the query endpoint
-	if version != "" {
-		apiURL = fmt.Sprintf("%s/v1/querybatch", s.baseURL)
-		httpReq, _ = http.NewRequestWithContext(ctx, "POST", apiURL, nil)
-	}
 
 	resp, err := s.client.Do(httpReq)
 	if err != nil {

@@ -5,9 +5,12 @@ import (
 	"context"
 
 	"github.com/cozygarage/sentinelflow/internal/config"
+	"github.com/cozygarage/sentinelflow/internal/scanner/container"
 	"github.com/cozygarage/sentinelflow/internal/scanner/dependencies"
 	"github.com/cozygarage/sentinelflow/internal/scanner/iac"
+	"github.com/cozygarage/sentinelflow/internal/scanner/license"
 	"github.com/cozygarage/sentinelflow/internal/scanner/policy"
+	"github.com/cozygarage/sentinelflow/internal/scanner/sast"
 	"github.com/cozygarage/sentinelflow/internal/scanner/secrets"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
@@ -147,4 +150,61 @@ func (a *PolicyAdapter) Scan(ctx context.Context, path string, opts interface{})
 		Findings:   result.Findings,
 		FilesCount: result.FilesCount,
 	}, nil
+}
+
+// SASTAdapter wraps the SAST scanner
+type SASTAdapter struct {
+	scanner *sast.Scanner
+}
+
+func NewSASTAdapter(cfg *config.Config) *SASTAdapter {
+	return &SASTAdapter{scanner: sast.NewScanner(cfg)}
+}
+
+func (a *SASTAdapter) Name() string { return a.scanner.Name() }
+func (a *SASTAdapter) Supports(path string) bool { return a.scanner.Supports(path) }
+func (a *SASTAdapter) Scan(ctx context.Context, path string, opts interface{}) (*ScannerResult, error) {
+	result, err := a.scanner.Scan(ctx, path, opts)
+	if err != nil {
+		return nil, err
+	}
+	return &ScannerResult{Findings: result.Findings, FilesCount: result.FilesCount}, nil
+}
+
+// ContainerAdapter wraps the container scanner
+type ContainerAdapter struct {
+	scanner *container.Scanner
+}
+
+func NewContainerAdapter(cfg *config.Config) *ContainerAdapter {
+	return &ContainerAdapter{scanner: container.NewScanner(cfg)}
+}
+
+func (a *ContainerAdapter) Name() string { return a.scanner.Name() }
+func (a *ContainerAdapter) Supports(path string) bool { return a.scanner.Supports(path) }
+func (a *ContainerAdapter) Scan(ctx context.Context, path string, opts interface{}) (*ScannerResult, error) {
+	result, err := a.scanner.Scan(ctx, path, opts)
+	if err != nil {
+		return nil, err
+	}
+	return &ScannerResult{Findings: result.Findings, FilesCount: result.FilesCount}, nil
+}
+
+// LicenseAdapter wraps the license scanner
+type LicenseAdapter struct {
+	scanner *license.Scanner
+}
+
+func NewLicenseAdapter(cfg *config.Config) *LicenseAdapter {
+	return &LicenseAdapter{scanner: license.NewScanner(cfg)}
+}
+
+func (a *LicenseAdapter) Name() string { return a.scanner.Name() }
+func (a *LicenseAdapter) Supports(path string) bool { return a.scanner.Supports(path) }
+func (a *LicenseAdapter) Scan(ctx context.Context, path string, opts interface{}) (*ScannerResult, error) {
+	result, err := a.scanner.Scan(ctx, path, opts)
+	if err != nil {
+		return nil, err
+	}
+	return &ScannerResult{Findings: result.Findings, FilesCount: result.FilesCount}, nil
 }

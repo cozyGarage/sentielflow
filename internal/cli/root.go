@@ -72,6 +72,9 @@ func init() {
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(policyCmd)
 	rootCmd.AddCommand(reportCmd)
+	rootCmd.AddCommand(hookCmd)
+	rootCmd.AddCommand(baselineCmd)
+	rootCmd.AddCommand(sbomCmd)
 }
 
 func initConfig() {

@@ -89,7 +89,7 @@ func TestEntropyDetection(t *testing.T) {
 	// Base64 must be at least 40 chars and NOT contain spaces.
 	keyName := "random" + "Data"
 	secretVal := "aGZnc2RmZ3NkZmc3ODY4NzZIZmRzYWZkczIxaEpsS0ptSzhsbE05TjlONjhCN0I2VjVWMzI="
-	highEntropy := fmt.Sprintf("%s = \"%s\"", keyName, secretVal)
+	highEntropy := fmt.Sprintf("%s=\"%s\"", keyName, secretVal)
 
 	findings := scanner.scanContent(highEntropy, "test.txt", 0)
 

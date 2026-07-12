@@ -8,13 +8,16 @@ import (
 	"io"
 	"math"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/cozygarage/sentinelflow/internal/config"
 	"github.com/cozygarage/sentinelflow/pkg/api"
+	"gopkg.in/yaml.v3"
 )
 
 // Scanner implements secret detection
@@ -39,6 +42,7 @@ func NewScanner(cfg *config.Config) *Scanner {
 		config: cfg,
 	}
 	s.patterns = s.loadPatterns()
+	s.patterns = append(s.patterns, s.loadCustomPatterns()...)
 	return s
 }
 
@@ -123,6 +127,15 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 	}
 
 	wg.Wait()
+
+	// Scan git history if enabled
+	if s.shouldScanGitHistory(path) {
+		historyFindings, err := s.scanGitHistory(ctx, path)
+		if err == nil {
+			result.Findings = append(result.Findings, historyFindings...)
+		}
+	}
+
 	return result, nil
 }
 
@@ -578,4 +591,158 @@ func (s *Scanner) getRemediation(pattern *SecretPattern) string {
 	}
 
 	return "Remove hardcoded secrets from code. Use environment variables or a secret management solution."
+}
+
+// shouldScanGitHistory checks if git history scanning is enabled
+func (s *Scanner) shouldScanGitHistory(path string) bool {
+	if s.config.Git.ScanHistory || s.config.Scanners.Secrets.ScanGitHistory {
+		gitDir := filepath.Join(path, ".git")
+		if _, err := os.Stat(gitDir); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// scanGitHistory scans past commits for secrets using git log
+func (s *Scanner) scanGitHistory(ctx context.Context, path string) ([]api.Finding, error) {
+	depth := s.config.Git.HistoryDepth
+	if depth <= 0 {
+		depth = s.config.Scanners.Secrets.MaxHistoryDepth
+	}
+	if depth <= 0 {
+		depth = 50
+	}
+
+	cmd := exec.CommandContext(ctx, "git", "-C", path, "log", "--pretty=format:%H", "-n", strconv.Itoa(depth))
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("git log failed: %w", err)
+	}
+
+	var findings []api.Finding
+	commits := strings.Split(strings.TrimSpace(string(output)), "\n")
+
+	for _, commit := range commits {
+		if commit == "" {
+			continue
+		}
+		select {
+		case <-ctx.Done():
+			return findings, ctx.Err()
+		default:
+		}
+
+		showCmd := exec.CommandContext(ctx, "git", "-C", path, "show", "--pretty=format:", "--name-only", commit)
+		showOutput, err := showCmd.Output()
+		if err != nil {
+			continue
+		}
+
+		files := strings.Split(strings.TrimSpace(string(showOutput)), "\n")
+		for _, file := range files {
+			if file == "" || !s.Supports(file) {
+				continue
+			}
+
+			diffCmd := exec.CommandContext(ctx, "git", "-C", path, "show", commit+":"+file)
+			content, err := diffCmd.Output()
+			if err != nil {
+				continue
+			}
+
+			virtualPath := fmt.Sprintf("%s@%s", file, commit[:8])
+			fileFindings, _ := s.scanReader(ctx, strings.NewReader(string(content)), virtualPath, path)
+			for i := range fileFindings {
+				fileFindings[i].Metadata = map[string]any{
+					"git_commit": commit,
+					"git_file":   file,
+				}
+				fileFindings[i].Description += fmt.Sprintf(" (found in commit %s)", commit[:8])
+			}
+			findings = append(findings, fileFindings...)
+		}
+	}
+
+	return findings, nil
+}
+
+// customPatternFile represents the .sentinelflow/patterns.yaml format
+type customPatternFile struct {
+	Patterns []customPatternEntry `yaml:"patterns"`
+}
+
+type customPatternEntry struct {
+	ID          string `yaml:"id"`
+	Name        string `yaml:"name"`
+	Regex       string `yaml:"regex"`
+	Severity    string `yaml:"severity"`
+	Description string `yaml:"description"`
+}
+
+// loadCustomPatterns loads patterns from .sentinelflow/patterns.yaml
+func (s *Scanner) loadCustomPatterns() []*SecretPattern {
+	paths := []string{".sentinelflow/patterns.yaml", ".sentinelflow/patterns.yml"}
+	var patterns []*SecretPattern
+
+	for _, p := range paths {
+		data, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+
+		var file customPatternFile
+		if err := yaml.Unmarshal(data, &file); err != nil {
+			continue
+		}
+
+		for _, entry := range file.Patterns {
+			if entry.Regex == "" {
+				continue
+			}
+			re, err := regexp.Compile(entry.Regex)
+			if err != nil {
+				continue
+			}
+			patterns = append(patterns, &SecretPattern{
+				ID:          entry.ID,
+				Name:        entry.Name,
+				Pattern:     re,
+				Severity:    parseSeverity(entry.Severity),
+				Description: entry.Description,
+			})
+		}
+	}
+
+	// Also load patterns from config
+	for _, pat := range s.config.Scanners.Secrets.Patterns {
+		re, err := regexp.Compile(pat)
+		if err != nil {
+			continue
+		}
+		patterns = append(patterns, &SecretPattern{
+			ID:          fmt.Sprintf("custom-%d", len(patterns)),
+			Name:        "Custom Pattern",
+			Pattern:     re,
+			Severity:    api.SeverityHigh,
+			Description: "Custom secret pattern from configuration",
+		})
+	}
+
+	return patterns
+}
+
+func parseSeverity(s string) api.Severity {
+	switch strings.ToLower(s) {
+	case "critical":
+		return api.SeverityCritical
+	case "high":
+		return api.SeverityHigh
+	case "medium":
+		return api.SeverityMedium
+	case "low":
+		return api.SeverityLow
+	default:
+		return api.SeverityHigh
+	}
 }

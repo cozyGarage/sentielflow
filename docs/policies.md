@@ -27,10 +27,13 @@ deny[msg] {
 1.  **Create a Rego file**: Save it in the `policies/` directory.
 2.  **Define the package**: Use the standard `sentinelflow` namespace.
 3.  **Define a `deny` rule**: SentinelFlow looks for any `deny` findings.
-4.  **Test your policy**:
+4.  **List and generate policies**:
     ```bash
-    sentinelflow policy validate my-rule.rego
+    sentinelflow policy list
+    sentinelflow policy generate my-rule
     ```
+
+    Policy validation and testing commands are planned but not yet available in the CLI.
 
 ## Best Practices
 

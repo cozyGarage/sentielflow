@@ -1,0 +1,191 @@
+// Package container provides container image vulnerability scanning via Trivy
+package container
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+
+	"github.com/cozygarage/sentinelflow/internal/config"
+	"github.com/cozygarage/sentinelflow/pkg/api"
+)
+
+// Scanner wraps Trivy for container scanning
+type Scanner struct {
+	config *config.Config
+}
+
+// ScannerResult contains scan results
+type ScannerResult struct {
+	Findings   []api.Finding
+	FilesCount int
+	Skipped    bool
+	SkipReason string
+}
+
+// NewScanner creates a new container scanner
+func NewScanner(cfg *config.Config) *Scanner {
+	return &Scanner{config: cfg}
+}
+
+func (s *Scanner) Name() string { return "container" }
+
+func (s *Scanner) Supports(path string) bool {
+	base := filepath.Base(path)
+	return base == "Dockerfile" || base == "docker-compose.yml" || base == "docker-compose.yaml"
+}
+
+// IsTrivyAvailable checks if trivy is installed
+func IsTrivyAvailable() bool {
+	_, err := exec.LookPath("trivy")
+	return err == nil
+}
+
+// Scan performs container vulnerability scanning
+func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*ScannerResult, error) {
+	result := &ScannerResult{Findings: []api.Finding{}}
+
+	image := s.config.Scanners.Container.Image
+	if image == "" {
+		image = s.detectImage(path)
+	}
+
+	if image == "" {
+		result.Skipped = true
+		result.SkipReason = "no container image specified or detected"
+		return result, nil
+	}
+
+	if !IsTrivyAvailable() {
+		result.Skipped = true
+		result.SkipReason = "trivy not installed; install from https://trivy.dev"
+		return result, nil
+	}
+
+	findings, err := s.runTrivy(ctx, image)
+	if err != nil {
+		return nil, fmt.Errorf("trivy scan failed: %w", err)
+	}
+
+	result.Findings = findings
+	result.FilesCount = 1
+	return result, nil
+}
+
+func (s *Scanner) detectImage(path string) string {
+	dockerfile := filepath.Join(path, "Dockerfile")
+	data, err := os.ReadFile(dockerfile)
+	if err != nil {
+		return ""
+	}
+
+	for _, line := range strings.Split(string(data), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(strings.ToUpper(trimmed), "FROM ") {
+			parts := strings.Fields(trimmed)
+			if len(parts) >= 2 {
+				return parts[1]
+			}
+		}
+	}
+	return ""
+}
+
+type trivyReport struct {
+	Results []struct {
+		Target          string `json:"Target"`
+		Vulnerabilities []struct {
+			VulnerabilityID  string  `json:"VulnerabilityID"`
+			PkgName          string  `json:"PkgName"`
+			InstalledVersion string  `json:"InstalledVersion"`
+			FixedVersion     string  `json:"FixedVersion"`
+			Severity         string  `json:"Severity"`
+			Title            string  `json:"Title"`
+			Description      string  `json:"Description"`
+			CVSS             map[string]struct {
+				V3Score float64 `json:"V3Score"`
+			} `json:"CVSS"`
+		} `json:"Vulnerabilities"`
+	} `json:"Results"`
+}
+
+func (s *Scanner) runTrivy(ctx context.Context, image string) ([]api.Finding, error) {
+	cmd := exec.CommandContext(ctx, "trivy", "image", "--format", "json", "--quiet", image)
+	output, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok && len(exitErr.Stderr) > 0 {
+			return nil, fmt.Errorf("%s: %s", err, string(exitErr.Stderr))
+		}
+	}
+
+	var report trivyReport
+	if err := json.Unmarshal(output, &report); err != nil {
+		return nil, fmt.Errorf("failed to parse trivy output: %w", err)
+	}
+
+	var findings []api.Finding
+	minSeverity := s.config.Scanners.Container.Severity
+
+	for _, r := range report.Results {
+		for _, v := range r.Vulnerabilities {
+			sev := parseSeverity(v.Severity)
+			if !meetsSeverity(string(sev), minSeverity) {
+				continue
+			}
+
+			cvss := 0.0
+			if nvd, ok := v.CVSS["nvd"]; ok {
+				cvss = nvd.V3Score
+			}
+
+			remediation := ""
+			if v.FixedVersion != "" {
+				remediation = fmt.Sprintf("Update %s to version %s", v.PkgName, v.FixedVersion)
+			}
+
+			findings = append(findings, api.Finding{
+				ID:          fmt.Sprintf("CONTAINER-%s", v.VulnerabilityID),
+				Type:        api.FindingTypeVulnerability,
+				Severity:    sev,
+				Title:       fmt.Sprintf("Container vulnerability: %s in %s", v.VulnerabilityID, v.PkgName),
+				Description: v.Description,
+				Location: api.Location{
+					File:    image,
+					Snippet: fmt.Sprintf("%s@%s", v.PkgName, v.InstalledVersion),
+				},
+				Remediation: remediation,
+				Scanner:     "container",
+				RuleID:      v.VulnerabilityID,
+				CVE:         v.VulnerabilityID,
+				CVSS:        cvss,
+				Confidence:  0.95,
+			})
+		}
+	}
+
+	return findings, nil
+}
+
+func parseSeverity(s string) api.Severity {
+	switch strings.ToLower(s) {
+	case "critical":
+		return api.SeverityCritical
+	case "high":
+		return api.SeverityHigh
+	case "medium":
+		return api.SeverityMedium
+	case "low":
+		return api.SeverityLow
+	default:
+		return api.SeverityInfo
+	}
+}
+
+func meetsSeverity(found, minimum string) bool {
+	order := map[string]int{"critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0}
+	return order[found] >= order[minimum]
+}

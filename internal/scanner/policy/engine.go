@@ -27,9 +27,8 @@ func NewOPAEngine() *OPAEngine {
 
 // LoadPolicy loads a single Rego policy
 func (e *OPAEngine) LoadPolicy(name, content string) error {
-	// Parse and compile the policy
 	query, err := rego.New(
-		rego.Query("data.sentinelflow."+name+".violation"),
+		rego.Query("data"),
 		rego.Module(name+".rego", content),
 	).PrepareForEval(context.Background())
 
@@ -71,7 +70,6 @@ func (e *OPAEngine) EvaluatePolicy(policyName string, input interface{}) (*Polic
 		return nil, fmt.Errorf("policy %s not found", policyName)
 	}
 
-	// Evaluate the policy
 	results, err := query.Eval(context.Background(), rego.EvalInput(input))
 	if err != nil {
 		return nil, fmt.Errorf("policy evaluation failed: %w", err)
@@ -82,24 +80,43 @@ func (e *OPAEngine) EvaluatePolicy(policyName string, input interface{}) (*Polic
 		Violations: []PolicyViolation{},
 	}
 
-	// Process results
-	if len(results) > 0 && len(results[0].Expressions) > 0 {
-		// Check if there are violations
-		violations, ok := results[0].Expressions[0].Value.([]interface{})
-		if ok {
-			for _, v := range violations {
-				if vMap, ok := v.(map[string]interface{}); ok {
+	if len(results) == 0 || len(results[0].Expressions) == 0 {
+		return result, nil
+	}
+
+	// Walk the data tree to collect violation messages from any rule
+	data, ok := results[0].Expressions[0].Value.(map[string]interface{})
+	if !ok {
+		return result, nil
+	}
+
+	collectViolations(data, &result.Violations)
+	return result, nil
+}
+
+// collectViolations recursively searches for violation messages in OPA output
+func collectViolations(data map[string]interface{}, violations *[]PolicyViolation) {
+	for _, v := range data {
+		switch val := v.(type) {
+		case map[string]interface{}:
+			collectViolations(val, violations)
+		case []interface{}:
+			for _, item := range val {
+				switch msg := item.(type) {
+				case string:
+					*violations = append(*violations, PolicyViolation{Message: msg})
+				case map[string]interface{}:
 					violation := PolicyViolation{
-						Message:  getString(vMap, "msg"),
-						Resource: getString(vMap, "resource"),
+						Message:  getString(msg, "msg"),
+						Resource: getString(msg, "resource"),
 					}
-					result.Violations = append(result.Violations, violation)
+					if violation.Message != "" {
+						*violations = append(*violations, violation)
+					}
 				}
 			}
 		}
 	}
-
-	return result, nil
 }
 
 // ValidatePolicy validates policy syntax without evaluating
