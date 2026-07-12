@@ -5,6 +5,11 @@ on:
     branches: [main, develop]
   push:
     branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: security-scan-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   security-scan:
@@ -21,22 +26,13 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.24'
-
-      - name: Build SentinelFlow
-        run: go build -o sentinelflow ./cmd/sentinelflow
-
       - name: Run SentinelFlow scan
-        id: scan
-        run: |
-          ./sentinelflow scan --secrets --iac --deps \
-            --fail-on high \
-            --format sarif \
-            -o report.sarif
-        continue-on-error: true
+        uses: ./.github/actions/sentinelflow
+        with:
+          scan-all: 'true'
+          fail-on: high
+          format: sarif
+          output: report.sarif
 
       - name: Upload SARIF to GitHub Security
         if: always()
@@ -45,20 +41,29 @@ jobs:
           sarif_file: report.sarif
           category: sentinelflow
 
-      - name: Generate Markdown Report
+      - name: Generate Markdown report
         if: github.event_name == 'pull_request'
-        run: |
-          ./sentinelflow scan --secrets --iac --deps \
-            --format markdown -o report.md || true
+        uses: ./.github/actions/sentinelflow
+        continue-on-error: true
+        with:
+          scan-all: 'true'
+          fail-on: low
+          format: markdown
+          output: report.md
 
-      - name: Comment PR
+      - name: Comment on pull request
         if: github.event_name == 'pull_request' && always()
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
-            if (!fs.existsSync('report.md')) return;
+            if (!fs.existsSync('report.md')) {
+              core.info('No report.md found, skipping PR comment');
+              return;
+            }
+
             const report = fs.readFileSync('report.md', 'utf8');
+            const marker = 'SentinelFlow Security Scan Report';
 
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
@@ -66,27 +71,83 @@ jobs:
               issue_number: context.issue.number,
             });
 
-            const botComment = comments.find(comment =>
-              comment.user.type === 'Bot' &&
-              comment.body.includes('SentinelFlow Security Scan Report')
+            const existing = comments.find(
+              (c) => c.user.type === 'Bot' && c.body.includes(marker)
             );
 
-            if (botComment) {
+            if (existing) {
               await github.rest.issues.updateComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                comment_id: botComment.id,
-                body: report
+                comment_id: existing.id,
+                body: report,
               });
             } else {
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: context.issue.number,
-                body: report
+                body: report,
               });
             }
 
-      - name: Fail on findings
-        if: steps.scan.outcome == 'failure'
-        run: exit 1
+  supply-chain:
+    name: Supply Chain
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Build SentinelFlow
+        run: go build -o sentinelflow ./cmd/sentinelflow
+
+      - name: Generate SBOM
+        run: ./sentinelflow sbom -o sbom.json
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.json
+          retention-days: 30
+
+  policy-check:
+    name: Policy Validation
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Build SentinelFlow
+        run: go build -o sentinelflow ./cmd/sentinelflow
+
+      - name: Validate built-in policies
+        run: |
+          for policy in policies/*.rego; do
+            echo "Validating $policy"
+            ./sentinelflow policy validate "$policy"
+          done
+
+      - name: Validate custom policies
+        if: hashFiles('.sentinelflow/policies/*.rego') != ''
+        run: |
+          for policy in .sentinelflow/policies/*.rego; do
+            echo "Validating $policy"
+            ./sentinelflow policy validate "$policy"
+          done

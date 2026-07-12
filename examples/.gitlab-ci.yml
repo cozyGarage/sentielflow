@@ -1,33 +1,52 @@
 stages:
   - security
 
-sentinelflow:
-  stage: security
-  image: golang:1.22
+variables:
+  GO_VERSION: "1.24"
+
+.sentinelflow_build:
   before_script:
-    - go install github.com/cozygarage/sentinelflow/cmd/sentinelflow@latest
+    - go build -o sentinelflow ./cmd/sentinelflow
+
+sentinelflow-scan:
+  stage: security
+  image: golang:${GO_VERSION}
+  extends: .sentinelflow_build
   script:
-    - sentinelflow scan --all --format sarif -o gl-sast-report.sarif
-    - sentinelflow scan --all --format json -o sentinelflow-results.json
+    - ./sentinelflow scan --all --format sarif -o gl-sast-report.sarif --fail-on high
+    - ./sentinelflow scan --all --format markdown -o report.md || true
   artifacts:
     reports:
       sast: gl-sast-report.sarif
     paths:
-      - sentinelflow-results.json
+      - report.md
     expire_in: 1 week
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: "$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH"
 
-# Alternative: using Docker image
-sentinelflow-docker:
+sentinelflow-sbom:
   stage: security
-  image: sentinelflow/scanner:latest
+  image: golang:${GO_VERSION}
+  extends: .sentinelflow_build
   script:
-    - sentinelflow scan --all --format sarif -o gl-sast-report.sarif
+    - ./sentinelflow sbom -o sbom.json
   artifacts:
-    reports:
-      sast: gl-sast-report.sarif
-  only:
-    - merge_requests
-    - main
+    paths:
+      - sbom.json
+    expire_in: 30 days
+  rules:
+    - if: "$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH"
+
+sentinelflow-policy:
+  stage: security
+  image: golang:${GO_VERSION}
+  extends: .sentinelflow_build
+  script:
+    - |
+      for policy in policies/*.rego; do
+        ./sentinelflow policy validate "$policy"
+      done
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: "$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH"

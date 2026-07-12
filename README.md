@@ -108,19 +108,17 @@ jobs:
       security-events: write
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          fetch-depth: 0
 
-      - name: Build SentinelFlow
-        run: go build -o sentinelflow ./cmd/sentinelflow
+      - uses: cozyGarage/sentielflow/.github/actions/sentinelflow@main
+        with:
+          scan-all: 'true'
+          fail-on: high
+          format: sarif
+          output: report.sarif
 
-      - name: Run scan
-        run: ./sentinelflow scan --all --format sarif -o report.sarif --fail-on high
-
-      - name: Upload SARIF
-        uses: github/codeql-action/upload-sarif@v3
+      - uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: report.sarif

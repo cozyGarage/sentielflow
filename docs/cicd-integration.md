@@ -1,10 +1,12 @@
 # CI/CD Integration
 
-SentinelFlow runs as a CLI binary in your pipeline. Build it from source or use the Docker image.
+SentinelFlow integrates with GitHub Actions, GitLab CI, and Docker-based pipelines.
 
 ## GitHub Actions
 
-### Basic scan with SARIF upload
+### Using the composite action (recommended)
+
+The repo includes a composite action at `.github/actions/sentinelflow` (also published as root `action.yml`):
 
 ```yaml
 name: Security Scan
@@ -26,45 +28,76 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v5
+      - uses: cozyGarage/sentielflow/.github/actions/sentinelflow@main
         with:
-          go-version: "1.24"
+          scan-all: 'true'
+          fail-on: high
+          format: sarif
+          output: report.sarif
 
-      - name: Build SentinelFlow
-        run: go build -o sentinelflow ./cmd/sentinelflow
-
-      - name: Run security scan
-        run: ./sentinelflow scan --all --format sarif -o report.sarif --fail-on high
-
-      - name: Upload SARIF
-        uses: github/codeql-action/upload-sarif@v3
+      - uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: report.sarif
           category: sentinelflow
 ```
 
-### PR comment with Markdown report
+For the same repository, use a local path:
 
 ```yaml
-      - name: Generate Markdown report
-        if: github.event_name == 'pull_request'
-        run: ./sentinelflow scan --all --format markdown -o report.md
-
-      - name: Comment on PR
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
+      - uses: ./.github/actions/sentinelflow
         with:
-          script: |
-            const fs = require('fs');
-            const report = fs.readFileSync('report.md', 'utf8');
-            github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: report
-            });
+          scan-all: 'true'
+          fail-on: high
+          format: sarif
+          output: report.sarif
 ```
+
+### Action inputs
+
+| Input | Default | Description |
+| --- | --- | --- |
+| `scan-all` | `true` | Enable secrets, IaC, deps, SAST, license |
+| `scan-secrets` | `true` | Secret scanning |
+| `scan-iac` | `true` | IaC scanning |
+| `scan-deps` | `true` | Dependency scanning |
+| `scan-sast` | `true` | OWASP SAST rules |
+| `scan-license` | `true` | License policy checks |
+| `scan-container` | `false` | Container scan (installs Trivy) |
+| `container-image` | — | Image to scan when container enabled |
+| `use-baseline` | `false` | Skip baselined findings |
+| `fail-on` | `high` | Pipeline failure threshold |
+| `format` | `sarif` | Report format |
+| `output` | `report.sarif` | Output file path |
+| `go-version` | `1.24` | Go version for building |
+
+### Container scanning in CI
+
+```yaml
+      - uses: ./.github/actions/sentinelflow
+        with:
+          scan-all: 'false'
+          scan-secrets: 'true'
+          scan-container: 'true'
+          container-image: myapp:${{ github.sha }}
+          fail-on: high
+          format: sarif
+          output: report.sarif
+```
+
+### SBOM and policy validation
+
+This repository's workflow runs three jobs:
+
+1. **security-scan** — Full scan, SARIF upload, PR comments
+2. **supply-chain** — SBOM generation (`sentinelflow sbom`)
+3. **policy-check** — Validates all `.rego` policies
+
+See [.github/workflows/security-scan.yml](../.github/workflows/security-scan.yml) for the full pipeline.
+
+### PR comments
+
+The workflow generates a Markdown report and updates an existing bot comment when possible. The report step uses `continue-on-error: true` so PR feedback is posted even when the security gate fails.
 
 ## GitLab CI
 
@@ -77,32 +110,34 @@ sentinelflow:
   image: golang:1.24
   script:
     - go build -o sentinelflow ./cmd/sentinelflow
-    - ./sentinelflow scan --all --format sarif -o gl-security-report.sarif --fail-on high
+    - ./sentinelflow scan --all --format sarif -o gl-sast-report.sarif --fail-on high
+    - ./sentinelflow sbom -o sbom.json
   artifacts:
     reports:
-      sast: gl-security-report.sarif
+      sast: gl-sast-report.sarif
+    paths:
+      - sbom.json
 ```
 
-See [examples/.gitlab-ci.yml](../examples/.gitlab-ci.yml) for a complete example.
+See [examples/.gitlab-ci.yml](../examples/.gitlab-ci.yml) for a complete example with policy validation.
 
 ## Docker
-
-Build and run using the included Dockerfile:
 
 ```bash
 docker build -t sentinelflow .
 docker run --rm -v $(pwd):/workspace -w /workspace sentinelflow scan --all
 ```
 
-## Exit Codes
+## Exit codes
 
-SentinelFlow exits with code `1` when findings exceed the configured `--fail-on` threshold or when a scan error occurs. Use this to gate merges in your pipeline.
+SentinelFlow exits with code `1` when findings exceed the `--fail-on` threshold. Use this to gate merges.
 
-## Recommended Settings
+## Recommended settings
 
 | Setting | CI recommendation |
 | --- | --- |
 | `--fail-on` | `high` or `critical` |
 | `--format` | `sarif` for GitHub/GitLab security tabs |
 | `--all` | Enable all implemented scanners |
+| `fetch-depth: 0` | Required for git history secret scanning |
 | Config file | Commit `.sentinelflow.yaml` to the repo |
