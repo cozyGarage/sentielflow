@@ -7,35 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-07-12
+
 ### Added
 
-- Multi-scanner security analysis (Secrets, IaC, Dependencies, Policy)
-- Support for Terraform, Kubernetes, Dockerfile scanning
-- OPA policy engine integration
-- Multiple output formats (Text, Markdown, JSON, SARIF, HTML)
-- GitHub Actions and GitLab CI integration examples
-- Vulnerability database integration (OSV API)
-- Docker image with multi-stage build
-- Automated release workflow with GoReleaser
-- Comprehensive benchmark suite
-- Full test coverage for core components
+- Multi-scanner security analysis: secrets, IaC, dependencies, SAST, container, license, and policy
+- Terraform, Kubernetes, and Dockerfile misconfiguration rules
+- OPA policy-as-code engine with built-in Rego policies
+- OSV-backed dependency vulnerability scanning
+- Report formats: text, Markdown, JSON, SARIF, and HTML
+- GitHub Actions composite action and CI workflow (security scan, SBOM, policy validation)
+- Pre-commit hook installer (`sentinelflow hook install`)
+- Baseline filtering for incremental adoption
+- MIT license
+
+### Fixed
+
+- Policy scanner now evaluates Rego policies at scan time (no stub)
+- Dependency scanner queries OSV instead of hardcoded demo data
+- `fail_on.secrets` and `fail_on.policy_violations` gates work alongside severity thresholds
+- Secret and code snippets are redacted in reports
+- Docker HEALTHCHECK uses `sentinelflow version`
+- Git metadata collection no longer panics on trailing newlines
 
 ### Security
 
-- Entropy-based secret detection
-- CVSS scoring for vulnerabilities
-- Policy-as-code enforcement
+- Entropy-based secret detection with allowlists
+- Git history secret scanning with allowlist support
+- `govulncheck` in CI pipeline
 - Non-root Docker container execution
 
-## [1.0.0] - TBD
-
-### Added
-
-- Initial release
-- Core scanning engine
-- 75+ security rules across all scanners
-- CI/CD integration support
-- Comprehensive documentation
-
-[Unreleased]: https://github.com/cozygarage/sentinelflow/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/cozygarage/sentinelflow/releases/tag/v1.0.0
+[Unreleased]: https://github.com/cozyGarage/sentielflow/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/cozyGarage/sentielflow/releases/tag/v1.0.0

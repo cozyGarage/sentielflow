@@ -21,3 +21,4 @@ cover.out
 # Temp
 tmp/
 .scanner_cache
+scan-report.json

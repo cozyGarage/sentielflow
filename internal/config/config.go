@@ -201,7 +201,7 @@ func Default() *Config {
 				"no-public-s3-buckets",
 				"no-privileged-containers",
 				"require-https",
-				"no-hardcoded-credentials",
+				"enforce-encryption",
 			},
 		},
 		Reporting: ReportConfig{

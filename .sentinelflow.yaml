@@ -21,6 +21,9 @@ scanners:
 
   dependencies:
     enabled: true
+    ignore_cves:
+      # Indirect via OPA; openpgp subpackage is unmaintained — tracked upstream
+      - GO-2026-5932
 
   sast:
     enabled: true

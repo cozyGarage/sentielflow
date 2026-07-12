@@ -82,15 +82,15 @@ dockers:
 
 release:
   github:
-    owner: sentinelflow
-    name: sentinelflow
+    owner: cozyGarage
+    name: sentielflow
   draft: false
-  prerelease: auto
+  prerelease: false
   name_template: "{{.ProjectName}} v{{.Version}}"
   header: |
     ## SentinelFlow {{.Version}}
 
-    AI-Driven CI/CD Security Gatekeeper
+    CI/CD Security Gatekeeper — secret, IaC, dependency, SAST, and policy scanning for pipelines.
 
     ### Installation
 

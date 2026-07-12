@@ -8,13 +8,17 @@ SentinelFlow is a security scanning tool that integrates with CI/CD pipelines to
 
 ## Features
 
-- **Secret Scanning**: Detect leaked API keys, tokens, passwords, and credentials
+- **Secret Scanning**: Detect leaked API keys, tokens, passwords, and credentials (including git history)
 - **Infrastructure-as-Code**: Scan Terraform, Kubernetes, and Dockerfile configurations
 - **Dependency Analysis**: Check for vulnerable dependencies via the OSV API
+- **SAST**: OWASP-oriented static analysis patterns for common languages
+- **Container Scanning**: Trivy integration for image vulnerability scanning
+- **License Policy**: Flag dependencies with denied licenses (GPL, AGPL, etc.)
 - **Policy Enforcement**: OPA-based policy-as-code validation
+- **SBOM Generation**: CycloneDX SBOM output for supply chain visibility
 - **Multiple Report Formats**: Text, Markdown, SARIF, JSON, and HTML output
 
-> **Note:** AI-powered code review is configured in `.sentinelflow.yaml` but not yet implemented in the scanner engine.
+> **Note:** AI-powered code review is planned for a future release. The `--ai` flag and config section exist but the scanner is not registered in v1.0.
 
 ## Quick Start
 

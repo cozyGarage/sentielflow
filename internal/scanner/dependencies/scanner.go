@@ -35,6 +35,7 @@ type Dependency struct {
 	Version   string
 	Ecosystem string
 	FilePath  string
+	Line      int
 	Dev       bool
 }
 
@@ -135,7 +136,7 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 				}
 
 				for _, vuln := range vulns {
-					if s.shouldIgnoreCVE(vuln.CVE) {
+					if s.shouldIgnoreVuln(vuln) {
 						continue
 					}
 					if !meetsMinSeverity(vuln.Severity, s.config.Scanners.Dependencies.Severity) {
@@ -157,12 +158,9 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 	return result, nil
 }
 
-func (s *Scanner) shouldIgnoreCVE(cve string) bool {
-	if cve == "" {
-		return false
-	}
+func (s *Scanner) shouldIgnoreVuln(vuln Vulnerability) bool {
 	for _, ignored := range s.config.Scanners.Dependencies.IgnoreCVEs {
-		if strings.EqualFold(ignored, cve) {
+		if strings.EqualFold(ignored, vuln.CVE) || strings.EqualFold(ignored, vuln.ID) {
 			return true
 		}
 	}
@@ -308,8 +306,10 @@ func (s *Scanner) createFinding(dep Dependency, vuln Vulnerability, basePath str
 		Title:       fmt.Sprintf("Vulnerable dependency: %s", dep.Name),
 		Description: fmt.Sprintf("%s@%s: %s", dep.Name, dep.Version, vuln.Description),
 		Location: api.Location{
-			File:    relPath,
-			Snippet: fmt.Sprintf("%s@%s", dep.Name, dep.Version),
+			File:      relPath,
+			StartLine: dep.Line,
+			EndLine:   dep.Line,
+			Snippet:   fmt.Sprintf("%s@%s", dep.Name, dep.Version),
 		},
 		Remediation: fmt.Sprintf("Update %s to a patched version%s", dep.Name, formatFixedIn(vuln.FixedIn)),
 		References:  vuln.References,
@@ -349,7 +349,7 @@ func (g *GoModScanner) Scan(ctx context.Context, path string) ([]Dependency, err
 	lines := strings.Split(string(content), "\n")
 
 	inRequire := false
-	for _, line := range lines {
+	for lineNum, line := range lines {
 		trimmed := strings.TrimSpace(line)
 
 		if strings.HasPrefix(trimmed, "require") {
@@ -370,6 +370,7 @@ func (g *GoModScanner) Scan(ctx context.Context, path string) ([]Dependency, err
 					Version:   parts[1],
 					Ecosystem: "go",
 					FilePath:  goModPath,
+					Line:      lineNum + 1,
 				})
 			}
 		}

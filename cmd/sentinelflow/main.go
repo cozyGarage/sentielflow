@@ -11,7 +11,7 @@ import (
 
 // Version information (set by build flags)
 var (
-	version = "dev"
+	version = "1.0.0"
 	commit  = "none"
 	date    = "unknown"
 )

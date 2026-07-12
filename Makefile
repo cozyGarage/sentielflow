@@ -9,7 +9,7 @@ all: test build
 
 build:
 	@echo "Building SentinelFlow..."
-	go build -o $(BINARY_NAME) ./cmd/sentinelflow
+	go build -ldflags "-X main.version=1.0.0 -X main.commit=dev -X main.date=unknown" -o $(BINARY_NAME) ./cmd/sentinelflow
 
 test:
 	@echo "Running unit tests..."

@@ -69,7 +69,7 @@ For the same repository, use a local path:
 | `fail-on` | `high` | Pipeline failure threshold |
 | `format` | `sarif` | Report format |
 | `output` | `report.sarif` | Output file path |
-| `go-version` | `1.24` | Go version for building |
+| `go-version` | `1.25` | Go version for building |
 
 ### Container scanning in CI
 

@@ -58,7 +58,7 @@ inputs:
   go-version:
     description: Go version for building SentinelFlow
     required: false
-    default: '1.24'
+    default: '1.25'
   working-directory:
     description: Directory to scan
     required: false

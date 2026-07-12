@@ -44,8 +44,7 @@ Available scanners:
   --sast         Static application security testing (OWASP patterns)
   --container    Scan container images (requires Trivy)
   --license      Check dependency licenses against policy
-  --ai           AI-powered code security review
-  --all          Enable all scanners
+  --all          Enable all implemented scanners (excludes AI preview)
 
 Examples:
   sentinelflow scan
@@ -64,7 +63,7 @@ func init() {
 	scanCmd.Flags().BoolVar(&scanLicense, "license", false, "check dependency licenses")
 	scanCmd.Flags().StringVar(&containerImage, "container-image", "", "container image to scan")
 	scanCmd.Flags().BoolVar(&useBaseline, "baseline", false, "apply baseline filtering")
-	scanCmd.Flags().BoolVar(&scanAI, "ai", false, "AI-powered code review")
+	scanCmd.Flags().BoolVar(&scanAI, "ai", false, "AI-powered code review (not available in v1.0)")
 	scanCmd.Flags().BoolVar(&scanAll, "all", false, "enable all scanners")
 	scanCmd.Flags().StringVarP(&outputFile, "output", "o", "", "output file path")
 	scanCmd.Flags().StringVar(&failOnSeverity, "fail-on", "", "fail if findings match severity (critical, high, medium, low)")
