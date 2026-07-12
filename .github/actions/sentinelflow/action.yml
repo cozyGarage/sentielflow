@@ -89,7 +89,7 @@ runs:
 
     - name: Install Trivy
       if: inputs.scan-container == 'true'
-      uses: aquasecurity/setup-trivy@v0.2.4
+      uses: aquasecurity/setup-trivy@v0.3.1
 
     - name: Run security scan
       id: scan
