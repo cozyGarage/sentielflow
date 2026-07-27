@@ -8,12 +8,16 @@ This guide explains how each scanner in SentinelFlow v1.0 works.
 
 1. **Regex matching** — Patterns for AWS, GCP, GitHub, Stripe, and other common credential formats.
 2. **Entropy analysis** — Shannon entropy threshold (default `4.5`) for high-randomness strings.
-3. **Keyword heuristics** — Context around assignments (`password=`, `token=`, etc.).
+3. **Keyword prefilter** — For patterns that embed keywords (generic secrets, AWS secret key assignments, etc.), the line must contain a keyword before the regex runs.
 4. **Custom patterns** — Optional `.sentinelflow/patterns.yaml` for org-specific rules.
 
 ### Git history
 
-When `scan_git_history` or `git.scan_history` is enabled, the scanner walks recent commits with `git log` / `git show` and applies the same rules. Allowlist patterns apply to historical paths.
+When `scan_git_history` or `git.scan_history` is enabled, the scanner walks recent commits with `git log -p` and scans **added patch lines** only (not full historical blobs). Findings are deduplicated across commits.
+
+### Concurrency
+
+Uses a fixed worker pool (`scanners.secrets.concurrency`, default 10; falls back to `scanners.concurrency`).
 
 ### Redaction
 

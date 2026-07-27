@@ -23,6 +23,7 @@ type Config struct {
 
 // ScannersConfig contains settings for all scanners
 type ScannersConfig struct {
+	Concurrency  int                 `yaml:"concurrency" mapstructure:"concurrency"`
 	Secrets      SecretsConfig      `yaml:"secrets" mapstructure:"secrets"`
 	IaC          IaCConfig          `yaml:"iac" mapstructure:"iac"`
 	Dependencies DependenciesConfig `yaml:"dependencies" mapstructure:"dependencies"`
@@ -40,14 +41,16 @@ type SecretsConfig struct {
 	EntropyThreshold float64  `yaml:"entropy_threshold" mapstructure:"entropy_threshold"`
 	ScanGitHistory   bool     `yaml:"scan_git_history" mapstructure:"scan_git_history"`
 	MaxHistoryDepth  int      `yaml:"max_history_depth" mapstructure:"max_history_depth"`
+	Concurrency      int      `yaml:"concurrency" mapstructure:"concurrency"`
 }
 
 // IaCConfig configures the Infrastructure-as-Code scanner
 type IaCConfig struct {
-	Enabled    bool     `yaml:"enabled" mapstructure:"enabled"`
-	Frameworks []string `yaml:"frameworks" mapstructure:"frameworks"`
-	Severity   string   `yaml:"severity" mapstructure:"severity"`
-	SkipRules  []string `yaml:"skip_rules" mapstructure:"skip_rules"`
+	Enabled     bool     `yaml:"enabled" mapstructure:"enabled"`
+	Frameworks  []string `yaml:"frameworks" mapstructure:"frameworks"`
+	Severity    string   `yaml:"severity" mapstructure:"severity"`
+	SkipRules   []string `yaml:"skip_rules" mapstructure:"skip_rules"`
+	Concurrency int      `yaml:"concurrency" mapstructure:"concurrency"`
 }
 
 // DependenciesConfig configures the dependency vulnerability scanner
@@ -61,9 +64,10 @@ type DependenciesConfig struct {
 
 // SASTConfig configures static application security testing
 type SASTConfig struct {
-	Enabled   bool     `yaml:"enabled" mapstructure:"enabled"`
-	Severity  string   `yaml:"severity" mapstructure:"severity"`
-	SkipRules []string `yaml:"skip_rules" mapstructure:"skip_rules"`
+	Enabled     bool     `yaml:"enabled" mapstructure:"enabled"`
+	Severity    string   `yaml:"severity" mapstructure:"severity"`
+	SkipRules   []string `yaml:"skip_rules" mapstructure:"skip_rules"`
+	Concurrency int      `yaml:"concurrency" mapstructure:"concurrency"`
 }
 
 // ContainerConfig configures container image scanning
@@ -152,10 +156,12 @@ func Default() *Config {
 	return &Config{
 		Version: "1.0",
 		Scanners: ScannersConfig{
+			Concurrency: 8,
 			Secrets: SecretsConfig{
 				Enabled:          true,
 				EntropyThreshold: 4.5,
 				MaxHistoryDepth:  50,
+				Concurrency:      10,
 				Allowlist: []string{
 					"test/**",
 					"**/*_test.go",
@@ -165,9 +171,10 @@ func Default() *Config {
 				},
 			},
 			IaC: IaCConfig{
-				Enabled:    true,
-				Severity:   "medium",
-				Frameworks: []string{"terraform", "kubernetes", "dockerfile", "cloudformation"},
+				Enabled:     true,
+				Severity:    "medium",
+				Concurrency: 5,
+				Frameworks:  []string{"terraform", "kubernetes", "dockerfile", "cloudformation"},
 			},
 			Dependencies: DependenciesConfig{
 				Enabled:    true,
@@ -176,8 +183,9 @@ func Default() *Config {
 				IgnoreDev:  false,
 			},
 			SAST: SASTConfig{
-				Enabled:  false,
-				Severity: "medium",
+				Enabled:     false,
+				Severity:    "medium",
+				Concurrency: 8,
 			},
 			Container: ContainerConfig{
 				Enabled:  false,
@@ -273,6 +281,10 @@ func (c *Config) Validate() error {
 	}
 	if c.Git.HistoryDepth < 0 {
 		return fmt.Errorf("git.history_depth must be >= 0")
+	}
+	if c.Scanners.Concurrency < 0 || c.Scanners.Secrets.Concurrency < 0 ||
+		c.Scanners.SAST.Concurrency < 0 || c.Scanners.IaC.Concurrency < 0 {
+		return fmt.Errorf("scanner concurrency must be >= 0")
 	}
 	if c.Scanners.AI.Enabled {
 		return fmt.Errorf("scanners.ai.enabled is not supported in v1.0")

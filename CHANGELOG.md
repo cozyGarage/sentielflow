@@ -12,9 +12,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Python dependency parsing for `pyproject.toml`, `poetry.lock`, and `Pipfile.lock` (in addition to `requirements.txt`)
 - Maven `pom.xml` dependency parsing with basic property resolution
 - Cargo `Cargo.lock` / `Cargo.toml` dependency parsing
+- Configurable scanner concurrency (`scanners.concurrency` and per-scanner overrides)
+
+### Changed
+
+- Engine shares collected files with secrets/SAST/IaC scanners (avoid re-walking trees)
+- File scanners use fixed worker pools instead of unbounded goroutine-per-file fanout
+- Shared `internal/scanner/types` contracts reduce adapter boilerplate
+- Secrets keyword prefilter for keyword-embedded patterns; git history scans patch hunks with dedupe
 
 ### Fixed
 
+- Secrets placeholder filtering checks the captured value (not keyword-bearing full matches) and avoids over-matching on words like "password"/"secret"
 - IaC scanner honors `frameworks`, `skip_rules`, and minimum `severity`
 - Terraform S3/SG checks are per-resource and detect multi-line security group ingress
 - Kubernetes scanning supports multi-doc YAML, init/ephemeral containers, and pod securityContext merge

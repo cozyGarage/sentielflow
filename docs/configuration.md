@@ -134,6 +134,9 @@ CLI override: `--fail-on high`
 version: "1.0"
 
 scanners:
+  # Optional global worker-pool size for file-based scanners (default: 4, max: 32).
+  # Per-scanner overrides: secrets.concurrency, sast.concurrency, iac.concurrency.
+  concurrency: 4
   secrets:
     enabled: true
     entropy_threshold: 4.5
