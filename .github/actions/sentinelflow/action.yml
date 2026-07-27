@@ -7,6 +7,14 @@ branding:
   color: blue
 
 inputs:
+  delivery:
+    description: How to obtain SentinelFlow — build (compile from source) or docker (pull image)
+    required: false
+    default: build
+  image:
+    description: Container image when delivery=docker
+    required: false
+    default: sentinelflow/sentinelflow:latest
   scan-all:
     description: Enable all scanners (secrets, iac, deps, sast, license)
     required: false
@@ -72,16 +80,25 @@ runs:
   using: composite
   steps:
     - name: Setup Go
+      if: inputs.delivery != 'docker'
       uses: actions/setup-go@v5
       with:
         go-version-file: go.mod
 
     - name: Build SentinelFlow
+      if: inputs.delivery != 'docker'
       shell: bash
       working-directory: ${{ github.workspace }}
       run: |
         go build -o sentinelflow ./cmd/sentinelflow
         ./sentinelflow version
+
+    - name: Pull SentinelFlow image
+      if: inputs.delivery == 'docker'
+      shell: bash
+      run: |
+        docker pull "${{ inputs.image }}"
+        docker run --rm "${{ inputs.image }}" version
 
     - name: Install Trivy
       if: inputs.scan-container == 'true'
@@ -92,8 +109,6 @@ runs:
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       run: |
-        SF="${{ github.workspace }}/sentinelflow"
-
         if [ "${{ inputs.scan-all }}" = "true" ]; then
           ARGS="--all"
         else
@@ -116,22 +131,36 @@ runs:
           ARGS="$ARGS --baseline"
         fi
 
+        OUT_PATH="${{ github.workspace }}/${{ inputs.output }}"
         set +e
-        "$SF" scan $ARGS \
-          --fail-on ${{ inputs.fail-on }} \
-          --format ${{ inputs.format }} \
-          -o "${{ github.workspace }}/${{ inputs.output }}"
-        EXIT_CODE=$?
+        if [ "${{ inputs.delivery }}" = "docker" ]; then
+          docker run --rm \
+            -v "${{ github.workspace }}:/workspace" \
+            -w "/workspace/${{ inputs.working-directory }}" \
+            "${{ inputs.image }}" \
+            scan $ARGS \
+              --fail-on ${{ inputs.fail-on }} \
+              --format ${{ inputs.format }} \
+              -o "/workspace/${{ inputs.output }}"
+          EXIT_CODE=$?
+        else
+          SF="${{ github.workspace }}/sentinelflow"
+          "$SF" scan $ARGS \
+            --fail-on ${{ inputs.fail-on }} \
+            --format ${{ inputs.format }} \
+            -o "$OUT_PATH"
+          EXIT_CODE=$?
+        fi
         set -e
 
         echo "exit-code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
 
-        if [ -f "${{ github.workspace }}/${{ inputs.output }}" ]; then
+        if [ -f "$OUT_PATH" ]; then
           if [ "${{ inputs.format }}" = "json" ]; then
-            COUNT=$(grep -o '"severity"' "${{ github.workspace }}/${{ inputs.output }}" | wc -l | tr -d ' ')
+            COUNT=$(grep -o '"severity"' "$OUT_PATH" | wc -l | tr -d ' ')
             echo "findings-count=$COUNT" >> "$GITHUB_OUTPUT"
           elif [ "${{ inputs.format }}" = "sarif" ]; then
-            COUNT=$(grep -o '"ruleId"' "${{ github.workspace }}/${{ inputs.output }}" | wc -l | tr -d ' ')
+            COUNT=$(grep -o '"ruleId"' "$OUT_PATH" | wc -l | tr -d ' ')
             echo "findings-count=$COUNT" >> "$GITHUB_OUTPUT"
           else
             echo "findings-count=0" >> "$GITHUB_OUTPUT"

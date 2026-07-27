@@ -2,6 +2,37 @@
 
 SentinelFlow is designed to be simple yet powerful. This guide covers the most common commands and use cases for v1.0.
 
+## Install
+
+| Method | Command |
+| --- | --- |
+| Docker | `docker pull sentinelflow/sentinelflow:latest` |
+| Release binary | Download from [GitHub Releases](https://github.com/cozyGarage/sentielflow/releases) |
+| Go | `go install github.com/cozygarage/sentinelflow/cmd/sentinelflow@latest` |
+| Source | `make build` |
+
+Docker one-liner:
+
+```bash
+docker run --rm -v "$PWD:/workspace" -w /workspace \
+  sentinelflow/sentinelflow:latest scan --all .
+```
+
+## Demo
+
+Scan the intentional sample project and emit HTML/Markdown/SARIF reports:
+
+```bash
+make demo
+# → demo-out/report.html, report.md, report.sarif
+```
+
+Or:
+
+```bash
+sentinelflow scan --secrets --iac --sast examples/demo-project
+```
+
 ## Basic Scan
 
 Scan the current directory with all implemented scanners:

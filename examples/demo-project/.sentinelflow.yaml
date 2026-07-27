@@ -1,0 +1,29 @@
+version: "1.0"
+
+scanners:
+  secrets:
+    enabled: true
+    entropy_threshold: 4.5
+  iac:
+    enabled: true
+    frameworks:
+      - terraform
+      - kubernetes
+      - dockerfile
+  dependencies:
+    enabled: false
+  sast:
+    enabled: true
+  license:
+    enabled: false
+
+policies:
+  enabled: true
+  builtin:
+    - no-public-s3-buckets
+    - no-privileged-containers
+
+fail_on:
+  severity: high
+  secrets: true
+  policy_violations: true

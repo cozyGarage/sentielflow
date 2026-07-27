@@ -4,6 +4,9 @@
 /bin/sentinelflow
 /bin/sentinelflow.exe
 
+# Demo output (regenerate with `make demo`)
+/demo-out/
+
 # OS generated files
 .DS_Store
 Thumbs.db

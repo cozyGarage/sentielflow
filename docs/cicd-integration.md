@@ -30,6 +30,8 @@ jobs:
 
       - uses: cozyGarage/sentielflow/.github/actions/sentinelflow@main
         with:
+          delivery: docker
+          image: sentinelflow/sentinelflow:latest
           scan-all: 'true'
           fail-on: high
           format: sarif

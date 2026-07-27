@@ -154,6 +154,7 @@ func (s *Scanner) scanFile(ctx context.Context, filePath, basePath string) []api
 // collectIaCFiles recursively collects IaC files
 func (s *Scanner) collectIaCFiles(dir string) ([]string, error) {
 	var files []string
+	root := filepath.Clean(dir)
 
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -164,7 +165,10 @@ func (s *Scanner) collectIaCFiles(dir string) ([]string, error) {
 			name := info.Name()
 			if name == ".git" || name == "node_modules" || name == "vendor" ||
 				name == ".terraform" || name == "__pycache__" || name == ".venv" ||
-				name == "dist" || name == "build" || name == "testdata" || name == "fixtures" {
+				name == "dist" || name == "build" {
+				return filepath.SkipDir
+			}
+			if filepath.Clean(path) != root && (name == "testdata" || name == "fixtures" || name == "demo-project") {
 				return filepath.SkipDir
 			}
 			return nil

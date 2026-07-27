@@ -20,8 +20,8 @@ type policyInput struct {
 var skipDirs = map[string]bool{
 	".git": true, "node_modules": true, "vendor": true, ".terraform": true,
 	"__pycache__": true, ".venv": true, "dist": true, "build": true, ".cache": true,
-	// Intentional misconfig / secret samples used by unit tests
-	"testdata": true, "fixtures": true,
+	// Intentional misconfig / secret samples used by unit tests and demos
+	"testdata": true, "fixtures": true, "demo-project": true,
 }
 
 func collectPolicyInputs(root string) ([]policyInput, error) {
@@ -46,13 +46,14 @@ func collectPolicyInputs(root string) ([]policyInput, error) {
 
 func collectKubernetesInputs(root string) ([]policyInput, error) {
 	var inputs []policyInput
+	root = filepath.Clean(root)
 
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 		if info.IsDir() {
-			if skipDirs[info.Name()] {
+			if skipDirs[info.Name()] && filepath.Clean(path) != root {
 				return filepath.SkipDir
 			}
 			return nil
@@ -122,13 +123,14 @@ var tfResourcePattern = regexp.MustCompile(`resource\s+"([^"]+)"\s+"([^"]+)"\s*\
 
 func collectTerraformInput(root string) (*policyInput, error) {
 	var changes []map[string]interface{}
+	root = filepath.Clean(root)
 
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 		if info.IsDir() {
-			if skipDirs[info.Name()] {
+			if skipDirs[info.Name()] && filepath.Clean(path) != root {
 				return filepath.SkipDir
 			}
 			return nil

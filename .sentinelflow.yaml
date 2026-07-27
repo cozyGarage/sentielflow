@@ -5,6 +5,7 @@ scanners:
     enabled: true
     allowlist:
       - "test/**"
+      - "examples/demo-project/**"
       - "**/testdata/**"
       - "**/*_test.go"
       - "**/*_bench_test.go"

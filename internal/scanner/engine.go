@@ -175,8 +175,11 @@ func (e *Engine) collectFiles(ctx context.Context, targetPath string) ([]string,
 			name := d.Name()
 			if name == ".git" || name == "node_modules" || name == "vendor" ||
 				name == ".terraform" || name == "__pycache__" || name == ".venv" ||
-				name == "dist" || name == "build" || name == ".cache" ||
-				name == "testdata" || name == "fixtures" {
+				name == "dist" || name == "build" || name == ".cache" {
+				return filepath.SkipDir
+			}
+			// Skip sample trees nested inside a larger scan target (not when they ARE the target).
+			if path != targetPath && (name == "testdata" || name == "fixtures" || name == "demo-project") {
 				return filepath.SkipDir
 			}
 			return nil
