@@ -89,7 +89,7 @@ func (s *Scanner) Supports(path string) bool {
 	supportedFiles := []string{
 		"go.mod", "go.sum",
 		"package.json", "package-lock.json", "yarn.lock",
-		"requirements.txt", "Pipfile", "Pipfile.lock", "poetry.lock",
+		"requirements.txt", "Pipfile", "Pipfile.lock", "poetry.lock", "pyproject.toml",
 		"pom.xml", "build.gradle",
 		"Cargo.toml", "Cargo.lock",
 		"Gemfile", "Gemfile.lock",
@@ -438,78 +438,3 @@ func (n *NpmScanner) Scan(ctx context.Context, path string) ([]Dependency, error
 	return deps, nil
 }
 
-// PipScanner scans Python packages
-type PipScanner struct{}
-
-func (p *PipScanner) Name() string { return "pip" }
-
-func (p *PipScanner) Detect(path string) bool {
-	files := []string{"requirements.txt", "Pipfile", "pyproject.toml"}
-	for _, f := range files {
-		if _, err := os.Stat(filepath.Join(path, f)); err == nil {
-			return true
-		}
-	}
-	return false
-}
-
-func (p *PipScanner) Scan(ctx context.Context, path string) ([]Dependency, error) {
-	reqPath := filepath.Join(path, "requirements.txt")
-	content, err := os.ReadFile(reqPath)
-	if err != nil {
-		return nil, err
-	}
-
-	var deps []Dependency
-	lines := strings.Split(string(content), "\n")
-
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
-			continue
-		}
-
-		parts := strings.FieldsFunc(trimmed, func(r rune) bool {
-			return r == '=' || r == '>' || r == '<'
-		})
-
-		if len(parts) >= 2 {
-			deps = append(deps, Dependency{
-				Name:      parts[0],
-				Version:   parts[1],
-				Ecosystem: "pip",
-				FilePath:  reqPath,
-			})
-		}
-	}
-
-	return deps, nil
-}
-
-// MavenScanner scans Maven projects
-type MavenScanner struct{}
-
-func (m *MavenScanner) Name() string { return "maven" }
-
-func (m *MavenScanner) Detect(path string) bool {
-	_, err := os.Stat(filepath.Join(path, "pom.xml"))
-	return err == nil
-}
-
-func (m *MavenScanner) Scan(ctx context.Context, path string) ([]Dependency, error) {
-	return []Dependency{}, nil
-}
-
-// CargoScanner scans Rust packages
-type CargoScanner struct{}
-
-func (c *CargoScanner) Name() string { return "cargo" }
-
-func (c *CargoScanner) Detect(path string) bool {
-	_, err := os.Stat(filepath.Join(path, "Cargo.toml"))
-	return err == nil
-}
-
-func (c *CargoScanner) Scan(ctx context.Context, path string) ([]Dependency, error) {
-	return []Dependency{}, nil
-}
