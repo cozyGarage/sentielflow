@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/cozygarage/sentinelflow/internal/config"
@@ -232,3 +233,179 @@ EXPOSE 22
 		t.Error("Did not detect exposed sensitive port (SSH)")
 	}
 }
+
+func TestIaCFrameworkAndSkipRules(t *testing.T) {
+	dir := t.TempDir()
+	writeTempFile(t, dir, "main.tf", `resource "aws_s3_bucket" "b" { acl = "public-read" }`)
+	writeTempFile(t, dir, "Dockerfile", "FROM nginx:latest\n")
+
+	cfg := &config.Config{
+		Scanners: config.ScannersConfig{
+			IaC: config.IaCConfig{
+				Enabled:    true,
+				Frameworks: []string{"dockerfile"},
+				SkipRules:  []string{"latest-tag"},
+				Severity:   "high",
+			},
+		},
+	}
+	result, err := NewScanner(cfg).Scan(context.Background(), dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range result.Findings {
+		if f.RuleID == "aws-s3-public-acl" {
+			t.Fatal("terraform framework should be disabled")
+		}
+		if f.RuleID == "latest-tag" {
+			t.Fatal("latest-tag should be skipped")
+		}
+	}
+}
+
+func TestKubernetesMultiDocAndInitContainer(t *testing.T) {
+	dir := t.TempDir()
+	manifest := `
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cfg
+data:
+  x: y
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: p
+spec:
+  securityContext:
+    runAsNonRoot: true
+  initContainers:
+  - name: init
+    image: busybox:1.36
+    securityContext:
+      privileged: true
+  containers:
+  - name: app
+    image: nginx:1.25
+    securityContext:
+      runAsNonRoot: true
+`
+	filePath := writeTempFile(t, dir, "multi.yaml", manifest)
+	findings := NewKubernetesScanner(&config.Config{}).ScanFile(context.Background(), filePath, dir)
+
+	foundPriv := false
+	for _, f := range findings {
+		if f.RuleID == "k8s-privileged" {
+			foundPriv = true
+		}
+	}
+	if !foundPriv {
+		t.Fatal("expected privileged initContainer finding")
+	}
+}
+
+func TestDockerfileFinalStageUser(t *testing.T) {
+	dir := t.TempDir()
+
+	// Explicit USER in final stage should clear missing-user
+	content2 := `FROM alpine:3.19 AS build
+RUN echo hi
+FROM alpine:3.19
+RUN adduser -D app
+USER app
+`
+	filePath2 := writeTempFile(t, dir, "Dockerfile.user", content2)
+	findings := NewDockerfileScanner(&config.Config{}).ScanFile(context.Background(), filePath2, dir)
+	for _, f := range findings {
+		if f.RuleID == "missing-user" {
+			t.Fatal("final stage USER app should satisfy missing-user")
+		}
+	}
+
+	// USER only in build stage should still flag
+	content3 := `FROM alpine:3.19 AS build
+USER nobody
+FROM alpine:3.19
+CMD ["/bin/sh"]
+
+# trailing blank/comment should not hide file-level checks
+`
+	filePath3 := writeTempFile(t, dir, "Dockerfile.builduser", content3)
+	findings = NewDockerfileScanner(&config.Config{}).ScanFile(context.Background(), filePath3, dir)
+	found := false
+	for _, f := range findings {
+		if f.RuleID == "missing-user" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected missing-user when only build stage sets USER")
+	}
+}
+
+func TestTerraformPerResourceAndMultilineSG(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+resource "aws_s3_bucket" "safe" {
+  bucket = "safe"
+  acl    = "private"
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "safe" {
+  bucket = aws_s3_bucket.safe.id
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "safe" {
+  bucket = aws_s3_bucket.safe.id
+  block_public_acls = true
+}
+
+resource "aws_s3_bucket" "bad" {
+  bucket = "bad"
+  acl    = "public-read"
+}
+
+resource "aws_security_group" "web" {
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+`
+	filePath := writeTempFile(t, dir, "main.tf", content)
+	findings := NewTerraformScanner(&config.Config{}).ScanFile(context.Background(), filePath, dir)
+
+	var publicACL, noEnc, sshOpen bool
+	for _, f := range findings {
+		switch f.RuleID {
+		case "aws-s3-public-acl":
+			if strings.Contains(f.Description, "bad") {
+				publicACL = true
+			}
+			if strings.Contains(f.Description, "safe") {
+				t.Fatal("safe bucket should not be public")
+			}
+		case "aws-s3-no-encryption":
+			if strings.Contains(f.Description, "safe") {
+				t.Fatal("safe bucket should not lack encryption")
+			}
+			if strings.Contains(f.Description, "bad") {
+				noEnc = true
+			}
+		case "aws-sg-ssh-open":
+			sshOpen = true
+		}
+	}
+	if !publicACL || !noEnc || !sshOpen {
+		t.Fatalf("expected per-resource findings, publicACL=%v noEnc=%v sshOpen=%v findings=%+v", publicACL, noEnc, sshOpen, findings)
+	}
+}
+
