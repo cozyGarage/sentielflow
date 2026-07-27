@@ -28,7 +28,7 @@ Run `sentinelflow init` to generate a starter configuration.
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `enabled` | bool | `true` | Enable IaC scanning |
-| `frameworks` | []string | terraform, kubernetes, dockerfile, cloudformation | Frameworks to scan |
+| `frameworks` | []string | terraform, kubernetes, dockerfile | Frameworks to scan |
 | `severity` | string | `medium` | Minimum severity to report |
 | `skip_rules` | []string | — | Rule IDs to ignore |
 
@@ -75,13 +75,15 @@ Run `sentinelflow init` to generate a starter configuration.
 
 ### AI (`scanners.ai`)
 
+AI-powered code review is **planned** and not available in this release. Setting `enabled: true` or passing `--ai` is rejected with a clear error. Config fields are retained for forward compatibility.
+
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
-| `enabled` | bool | `false` | Enable AI review (not yet implemented) |
-| `provider` | string | `openai` | LLM provider |
-| `model` | string | `gpt-4` | Model name |
-| `api_key` | string | env | Set via `SENTINELFLOW_AI_API_KEY` or `OPENAI_API_KEY` |
-| `focus` | []string | injection, auth, crypto | Security focus areas |
+| `enabled` | bool | `false` | Must remain `false` (rejected if `true`) |
+| `provider` | string | `openai` | Reserved for a future release |
+| `model` | string | `gpt-4` | Reserved for a future release |
+| `api_key` | string | env | Reserved (`SENTINELFLOW_AI_API_KEY` / `OPENAI_API_KEY`) |
+| `focus` | []string | injection, auth, crypto | Reserved focus areas |
 
 ## Policies (`policies`)
 
@@ -134,9 +136,9 @@ CLI override: `--fail-on high`
 version: "1.0"
 
 scanners:
-  # Optional global worker-pool size for file-based scanners (default: 4, max: 32).
+  # Optional global worker-pool size for file-based scanners (default: 8).
   # Per-scanner overrides: secrets.concurrency, sast.concurrency, iac.concurrency.
-  concurrency: 4
+  concurrency: 8
   secrets:
     enabled: true
     entropy_threshold: 4.5

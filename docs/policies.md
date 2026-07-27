@@ -70,8 +70,8 @@ sentinelflow policy generate my-rule
 # Syntax check
 sentinelflow policy validate policies/my-rule.rego
 
-# Evaluate against sample input
-sentinelflow policy test policies/my-rule.rego --input test/fixtures/input.json
+# Evaluate against sample input (positional args: policy file, then input JSON)
+sentinelflow policy test policies/my-rule.rego test/fixtures/policy/k8s-privileged-pod.json
 ```
 
 The CI **Policy Validation** job runs `policy validate` on all shipped policies.

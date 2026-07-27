@@ -18,7 +18,7 @@ SentinelFlow is a security scanning tool that integrates with CI/CD pipelines to
 - **SBOM Generation**: CycloneDX SBOM output for supply chain visibility
 - **Multiple Report Formats**: Text, Markdown, SARIF, JSON, and HTML output
 
-> **Note:** AI-powered code review is planned for a future release. The `--ai` flag and config section exist but the scanner is not registered in v1.0.
+> **Note:** AI-powered code review is planned. The `--ai` flag and `scanners.ai` config exist for forward compatibility, but enabling them is rejected in this release.
 
 ## Quick Start
 
@@ -82,7 +82,7 @@ scanners:
     severity: medium
 
   ai:
-    enabled: false  # Not yet implemented
+    enabled: false  # Planned; rejected if true in this release
 
 policies:
   enabled: true

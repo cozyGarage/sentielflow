@@ -13,8 +13,12 @@ func TestValidateRejectsInvalidSeverity(t *testing.T) {
 func TestValidateRejectsAIEnabled(t *testing.T) {
 	cfg := Default()
 	cfg.Scanners.AI.Enabled = true
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("expected AI enabled config to fail validation in v1.0")
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected AI enabled config to fail validation")
+	}
+	if err.Error() != AINotAvailableMessage {
+		t.Fatalf("expected shared AI rejection message, got %v", err)
 	}
 }
 

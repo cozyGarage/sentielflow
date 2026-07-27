@@ -55,10 +55,6 @@ func (s *Scanner) Supports(path string) bool {
 		return s.frameworkEnabled("dockerfile")
 	}
 
-	if ext == ".json" && strings.Contains(strings.ToLower(path), "cloudformation") {
-		return s.frameworkEnabled("cloudformation")
-	}
-
 	return false
 }
 

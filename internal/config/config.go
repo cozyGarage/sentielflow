@@ -10,6 +10,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// AINotAvailableMessage is the shared rejection text for --ai / scanners.ai.enabled.
+const AINotAvailableMessage = "AI-powered code review is not available in this release (planned); omit --ai and keep scanners.ai.enabled: false"
+
 // Config represents the SentinelFlow configuration
 type Config struct {
 	Version   string         `yaml:"version" mapstructure:"version"`
@@ -174,7 +177,7 @@ func Default() *Config {
 				Enabled:     true,
 				Severity:    "medium",
 				Concurrency: 5,
-				Frameworks:  []string{"terraform", "kubernetes", "dockerfile", "cloudformation"},
+				Frameworks:  []string{"terraform", "kubernetes", "dockerfile"},
 			},
 			Dependencies: DependenciesConfig{
 				Enabled:    true,
@@ -287,7 +290,7 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("scanner concurrency must be >= 0")
 	}
 	if c.Scanners.AI.Enabled {
-		return fmt.Errorf("scanners.ai.enabled is not supported in v1.0")
+		return fmt.Errorf("%s", AINotAvailableMessage)
 	}
 
 	return nil

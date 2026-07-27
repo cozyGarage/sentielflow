@@ -1,0 +1,14 @@
+{
+  "resource_changes": [
+    {
+      "name": "public_assets",
+      "type": "aws_s3_bucket",
+      "change": {
+        "after": {
+          "acl": "public-read",
+          "bucket": "public-assets"
+        }
+      }
+    }
+  ]
+}

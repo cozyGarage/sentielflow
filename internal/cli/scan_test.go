@@ -99,8 +99,8 @@ func TestApplyScanFlagsRejectsAI(t *testing.T) {
 	scanAI = true
 	scanAll = false
 	err := applyScanFlags(config.Default())
-	if err == nil || !strings.Contains(err.Error(), "not available") {
-		t.Fatalf("expected --ai rejection, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), config.AINotAvailableMessage) {
+		t.Fatalf("expected --ai rejection with shared message, got %v", err)
 	}
 }
 

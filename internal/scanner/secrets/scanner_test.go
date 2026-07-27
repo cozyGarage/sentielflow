@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/cozygarage/sentinelflow/internal/config"
+	"github.com/cozygarage/sentinelflow/internal/testutil"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
 
@@ -190,6 +191,34 @@ func TestMasking(t *testing.T) {
 	// The implementation masks with 8 asterisks max
 	if !contains(masked, "*") {
 		t.Error("Masked secret should contain asterisks")
+	}
+}
+
+func TestSecretsFixtures(t *testing.T) {
+	cfg := config.Default()
+	scanner := NewScanner(cfg)
+
+	tokens := string(testutil.ReadFixture(t, "secrets/leaked_tokens.env"))
+	findings := scanner.scanContent(tokens, "leaked_tokens.env", 0)
+	if len(findings) == 0 {
+		t.Fatal("expected findings from leaked_tokens.env fixture")
+	}
+	found := false
+	for _, f := range findings {
+		if f.RuleID == "github-token" || f.RuleID == "generic-secret" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected github-token or generic-secret from fixture, got %+v", findings)
+	}
+
+	placeholders := string(testutil.ReadFixture(t, "secrets/placeholders.env"))
+	for _, f := range scanner.scanContent(placeholders, "placeholders.env", 0) {
+		if f.Severity == api.SeverityCritical {
+			t.Errorf("placeholder fixture should not yield critical finding: %s", f.Title)
+		}
 	}
 }
 

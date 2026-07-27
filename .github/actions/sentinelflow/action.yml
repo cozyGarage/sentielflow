@@ -40,7 +40,7 @@ inputs:
     required: false
     default: ''
   use-baseline:
-    description: Apply baseline filtering (.sentinelflow.baseline.json)
+    description: Apply baseline filtering (.sentinelflow/baseline.yaml)
     required: false
     default: 'false'
   fail-on:
