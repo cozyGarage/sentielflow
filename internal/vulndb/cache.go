@@ -32,15 +32,20 @@ func (c *memoryCache) Get(key string) ([]Vulnerability, error) {
 		return nil, fmt.Errorf("cache miss")
 	}
 
-	return entry.vulns, nil
+	out := make([]Vulnerability, len(entry.vulns))
+	copy(out, entry.vulns)
+	return out, nil
 }
 
 func (c *memoryCache) Set(key string, vulns []Vulnerability, ttl time.Duration) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	stored := make([]Vulnerability, len(vulns))
+	copy(stored, vulns)
+
 	c.items[key] = cacheEntry{
-		vulns:     vulns,
+		vulns:     stored,
 		expiresAt: time.Now().Add(ttl),
 	}
 

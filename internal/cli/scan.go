@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/fatih/color"
@@ -98,8 +99,21 @@ func runScan(cmd *cobra.Command, args []string) error {
 		cfg = config.Default()
 	}
 
+	if err := cfg.Validate(); err != nil {
+		return fmt.Errorf("invalid configuration: %w", err)
+	}
+
 	// Apply CLI flags to config
-	applyScanFlags(cfg)
+	if err := applyScanFlags(cfg); err != nil {
+		return err
+	}
+
+	// Prefer config reporting format unless --format was explicitly set
+	format := outputFormat
+	formatChanged := cmd.Flags().Changed("format") || rootCmd.PersistentFlags().Changed("format")
+	if !formatChanged && cfg.Reporting.Format != "" {
+		format = cfg.Reporting.Format
+	}
 
 	// Create scanner engine
 	engine := scanner.NewEngine(cfg)
@@ -121,13 +135,18 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 	// Generate report
 	rep := reporter.New(cfg)
-	report, err := rep.Generate(result, outputFormat)
+	report, err := rep.Generate(result, format)
 	if err != nil {
 		return fmt.Errorf("failed to generate report: %w", err)
 	}
 
 	// Output report
 	if outputFile != "" {
+		if dir := filepath.Dir(outputFile); dir != "" && dir != "." {
+			if err := os.MkdirAll(dir, 0755); err != nil {
+				return fmt.Errorf("failed to create output directory: %w", err)
+			}
+		}
 		if err := os.WriteFile(outputFile, []byte(report), 0644); err != nil {
 			return fmt.Errorf("failed to write report: %w", err)
 		}
@@ -139,6 +158,10 @@ func runScan(cmd *cobra.Command, args []string) error {
 	// Print summary
 	printScanSummary(result)
 
+	if err := scannerErrors(result); err != nil {
+		return err
+	}
+
 	// Check fail conditions
 	if shouldFail(result, cfg) {
 		return fmt.Errorf("scan failed due to findings exceeding threshold")
@@ -147,7 +170,11 @@ func runScan(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func applyScanFlags(cfg *config.Config) {
+func applyScanFlags(cfg *config.Config) error {
+	if scanAI {
+		return fmt.Errorf("AI-powered code review is not available in v1.0; omit --ai or set scanners.ai.enabled: false")
+	}
+
 	if scanAll {
 		cfg.Scanners.Secrets.Enabled = true
 		cfg.Scanners.IaC.Enabled = true
@@ -157,15 +184,12 @@ func applyScanFlags(cfg *config.Config) {
 		cfg.Scanners.License.Enabled = true
 		// AI scanner is not registered in v1.0
 		cfg.Scanners.AI.Enabled = false
-		return
-	}
-
-	// If specific flags are set, only enable those
-	if scanSecrets || scanIaC || scanDependencies || scanAI || scanSAST || scanContainer || scanLicense {
+	} else if scanSecrets || scanIaC || scanDependencies || scanSAST || scanContainer || scanLicense {
+		// If specific flags are set, only enable those
 		cfg.Scanners.Secrets.Enabled = scanSecrets
 		cfg.Scanners.IaC.Enabled = scanIaC
 		cfg.Scanners.Dependencies.Enabled = scanDependencies
-		cfg.Scanners.AI.Enabled = scanAI
+		cfg.Scanners.AI.Enabled = false
 		cfg.Scanners.SAST.Enabled = scanSAST
 		cfg.Scanners.Container.Enabled = scanContainer
 		cfg.Scanners.License.Enabled = scanLicense
@@ -184,6 +208,21 @@ func applyScanFlags(cfg *config.Config) {
 	if failOnSeverity != "" {
 		cfg.FailOn.Severity = failOnSeverity
 	}
+
+	return nil
+}
+
+func scannerErrors(result *api.ScanResult) error {
+	var errs []string
+	for _, run := range result.ScannerRuns {
+		if run.Error != "" {
+			errs = append(errs, fmt.Sprintf("%s: %s", run.Scanner, run.Error))
+		}
+	}
+	if len(errs) == 0 {
+		return nil
+	}
+	return fmt.Errorf("one or more scanners failed:\n  - %s", strings.Join(errs, "\n  - "))
 }
 
 func printScanHeader(path string, cfg *config.Config) {

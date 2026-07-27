@@ -125,7 +125,20 @@ func (s *Scanner) parseGoMod(path string) ([]Component, error) {
 	inRequire := false
 	for _, line := range strings.Split(string(data), "\n") {
 		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "//") {
+			continue
+		}
 		if strings.HasPrefix(trimmed, "require") {
+			parts := strings.Fields(trimmed)
+			if len(parts) >= 3 && parts[0] == "require" && parts[1] != "(" {
+				components = append(components, Component{
+					Type:    "library",
+					Name:    parts[1],
+					Version: parts[2],
+					PURL:    fmt.Sprintf("pkg:golang/%s@%s", parts[1], parts[2]),
+				})
+				continue
+			}
 			inRequire = true
 			continue
 		}
@@ -133,7 +146,7 @@ func (s *Scanner) parseGoMod(path string) ([]Component, error) {
 			inRequire = false
 			continue
 		}
-		if inRequire || strings.HasPrefix(trimmed, "require ") {
+		if inRequire {
 			parts := strings.Fields(trimmed)
 			if len(parts) >= 2 {
 				components = append(components, Component{

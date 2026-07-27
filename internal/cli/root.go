@@ -98,10 +98,20 @@ func initConfig() {
 	viper.AutomaticEnv()
 	viper.SetEnvPrefix("SENTINELFLOW")
 
-	if err := viper.ReadInConfig(); err == nil {
-		if verbose {
-			fmt.Println("Using config file:", viper.ConfigFileUsed())
+	if err := viper.ReadInConfig(); err != nil {
+		// Missing config is fine; malformed config is not.
+		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+			return
 		}
+		if cfgFile == "" && os.IsNotExist(err) {
+			return
+		}
+		fmt.Fprintf(os.Stderr, "error: failed to read config file: %v\n", err)
+		os.Exit(1)
+	}
+
+	if verbose {
+		fmt.Println("Using config file:", viper.ConfigFileUsed())
 	}
 }
 

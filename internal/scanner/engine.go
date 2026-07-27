@@ -151,9 +151,11 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 		if blPath == "" {
 			blPath = baseline.DefaultPath
 		}
-		if bl, err := baseline.Load(blPath); err == nil {
-			result.Findings = baseline.Filter(result.Findings, bl)
+		bl, err := baseline.Load(blPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load baseline %s: %w", blPath, err)
 		}
+		result.Findings = baseline.Filter(result.Findings, bl)
 	}
 
 	result.Metadata.EndTime = time.Now()

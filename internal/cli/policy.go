@@ -165,6 +165,9 @@ var policyGenerateCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
+		if err := validatePolicyName(name); err != nil {
+			return err
+		}
 
 		template := fmt.Sprintf(`package sentinelflow.%s
 
@@ -193,14 +196,57 @@ violation[msg] {
 			return fmt.Errorf("failed to create policies directory: %w", err)
 		}
 
-		policyPath := filepath.Join(policyDir, name+".rego")
-		if err := os.WriteFile(policyPath, []byte(template), 0644); err != nil {
+		policyPath, err := safePolicyPath(policyDir, name)
+		if err != nil {
+			return err
+		}
+
+		f, err := os.OpenFile(policyPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+		if err != nil {
+			if os.IsExist(err) {
+				return fmt.Errorf("policy already exists: %s", policyPath)
+			}
+			return fmt.Errorf("failed to write policy file: %w", err)
+		}
+		defer f.Close()
+
+		if _, err := f.WriteString(template); err != nil {
 			return fmt.Errorf("failed to write policy file: %w", err)
 		}
 
 		fmt.Printf("%s Created policy template: %s\n", color.GreenString("✓"), policyPath)
 		return nil
 	},
+}
+
+func validatePolicyName(name string) error {
+	if name == "" {
+		return fmt.Errorf("policy name cannot be empty")
+	}
+	if strings.ContainsAny(name, `/\`) || strings.Contains(name, "..") {
+		return fmt.Errorf("policy name must not contain path separators or '..'")
+	}
+	for _, r := range name {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-' {
+			continue
+		}
+		return fmt.Errorf("policy name %q is invalid; use only letters, numbers, '_' and '-'", name)
+	}
+	return nil
+}
+
+func safePolicyPath(policyDir, name string) (string, error) {
+	absDir, err := filepath.Abs(policyDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve policy directory: %w", err)
+	}
+	candidate := filepath.Join(absDir, name+".rego")
+	cleaned := filepath.Clean(candidate)
+	rel, err := filepath.Rel(absDir, cleaned)
+	if err != nil || strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
+		return "", fmt.Errorf("policy path escapes policies directory")
+	}
+	return cleaned, nil
 }
 
 func init() {

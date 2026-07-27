@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -102,12 +103,15 @@ func (c *Client) Query(ctx context.Context, ecosystem, pkg, version string) ([]V
 
 	var allVulns []Vulnerability
 	seen := make(map[string]bool)
+	var sourceErrs []string
+	queried := 0
 
 	// Query all sources
 	for _, source := range c.sources {
+		queried++
 		vulns, err := source.Query(ctx, ecosystem, pkg, version)
 		if err != nil {
-			// Log error but continue with other sources
+			sourceErrs = append(sourceErrs, fmt.Sprintf("%s: %v", source.Name(), err))
 			continue
 		}
 
@@ -120,7 +124,12 @@ func (c *Client) Query(ctx context.Context, ecosystem, pkg, version string) ([]V
 		}
 	}
 
-	// Cache results (24 hour TTL)
+	// If every source failed, surface the error and do not cache emptiness
+	if queried > 0 && len(sourceErrs) == queried && len(allVulns) == 0 {
+		return nil, fmt.Errorf("vulnerability lookup failed for %s/%s@%s: %s", ecosystem, pkg, version, strings.Join(sourceErrs, "; "))
+	}
+
+	// Cache successful results only (including empty = no known vulns)
 	_ = c.cache.Set(cacheKey, allVulns, 24*time.Hour)
 
 	return allVulns, nil

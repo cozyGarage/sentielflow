@@ -100,6 +100,29 @@ func TestMarkdownFormatter(t *testing.T) {
 	}
 }
 
+func TestMarkdownFormatterEscapesUntrustedContent(t *testing.T) {
+	result := createTestResult()
+	result.Findings[0].Title = `<script>alert(1)</script>`
+	result.Findings[0].Description = `Click [here](javascript:alert(1))`
+	result.Findings[0].Location.File = "path|with|pipes.go"
+	result.Findings[0].Location.Snippet = "secret := ```injected```"
+
+	output, err := (&MarkdownFormatter{}).Format(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(output, "<script>alert(1)</script>") {
+		t.Fatal("expected HTML in titles to be escaped")
+	}
+	if strings.Contains(output, "```injected```") {
+		t.Fatal("expected code fence breakout to be sanitized")
+	}
+	if !strings.Contains(output, "path|with|pipes.go") && !strings.Contains(output, "path\\|with\\|pipes.go") {
+		// file is inline-code escaped; pipes in backticks are fine
+		t.Fatal("expected file path to remain readable")
+	}
+}
+
 func TestJSONFormatter(t *testing.T) {
 	result := createTestResult()
 	formatter := &JSONFormatter{}
