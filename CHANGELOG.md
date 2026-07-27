@@ -15,19 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- `--all` now also applies `--fail-on`, `--baseline`, and `--container-image` (no early return)
-- `--ai` fails clearly instead of silently enabling a non-existent scanner
-- Scanner runtime errors fail the scan instead of producing a false clean pass
-- Vulnerability DB no longer caches empty results when all sources fail
-- Single-line `go.mod` `require` statements are parsed for dependency and SBOM scans
-- Config validation rejects invalid severities/formats; malformed config files fail startup
-- `reporting.format` is honored when `--format` is not explicitly set
-- Policy `generate` rejects path traversal; hook install appends instead of overwriting
-- Markdown reports escape untrusted finding content for safer PR comments
-- Trivy image refs are validated; APT cleanup Dockerfile check no longer requires a double space
-- Built-in Rego policies are embedded and loaded via `policies.builtin`
-- Policy input supports multi-document Kubernetes YAML and richer Terraform attributes/refs
-- JSON reports encode durations as `duration_ms` (milliseconds) with shared severity helpers
+- IaC scanner honors `frameworks`, `skip_rules`, and minimum `severity`
+- Terraform S3/SG checks are per-resource and detect multi-line security group ingress
+- Kubernetes scanning supports multi-doc YAML, init/ephemeral containers, and pod securityContext merge
+- Dockerfile checks are stage-aware (final-stage USER/HEALTHCHECK) and handle continuations/case
 
 ## [1.0.0] - 2026-07-12
 

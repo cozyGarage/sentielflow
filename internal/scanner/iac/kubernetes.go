@@ -1,8 +1,10 @@
 package iac
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,9 +21,7 @@ type KubernetesScanner struct {
 
 // NewKubernetesScanner creates a new Kubernetes scanner
 func NewKubernetesScanner(cfg *config.Config) *KubernetesScanner {
-	return &KubernetesScanner{
-		config: cfg,
-	}
+	return &KubernetesScanner{config: cfg}
 }
 
 // IsKubernetesManifest checks if a YAML file is a Kubernetes manifest
@@ -30,331 +30,290 @@ func (s *KubernetesScanner) IsKubernetesManifest(filePath string) bool {
 	if err != nil {
 		return false
 	}
-
-	// Quick check for Kubernetes API version
-	return strings.Contains(string(content), "apiVersion:") &&
-		(strings.Contains(string(content), "kind:"))
+	text := string(content)
+	return strings.Contains(text, "apiVersion:") && strings.Contains(text, "kind:")
 }
 
-// ScanFile scans a Kubernetes manifest file
+// ScanFile scans a Kubernetes manifest file (supports multi-document YAML)
 func (s *KubernetesScanner) ScanFile(ctx context.Context, filePath, basePath string) []api.Finding {
 	content, err := os.ReadFile(filePath)
 	if err != nil {
-		return []api.Finding{}
+		return nil
+	}
+
+	relPath, _ := filepath.Rel(basePath, filePath)
+	docs, err := decodeK8sDocuments(content)
+	if err != nil || len(docs) == 0 {
+		return nil
 	}
 
 	var findings []api.Finding
-	relPath, _ := filepath.Rel(basePath, filePath)
+	for i, manifest := range docs {
+		select {
+		case <-ctx.Done():
+			return findings
+		default:
+		}
 
-	// Parse YAML
-	var manifest map[string]interface{}
-	if err := yaml.Unmarshal(content, &manifest); err != nil {
-		return findings
-	}
+		kind, _ := manifest["kind"].(string)
+		if kind == "" {
+			continue
+		}
 
-	// Check kind
-	kind, ok := manifest["kind"].(string)
-	if !ok {
-		return findings
-	}
+		docPath := relPath
+		if len(docs) > 1 {
+			docPath = fmt.Sprintf("%s#%d", relPath, i+1)
+		}
 
-	// Run checks based on resource type
-	switch kind {
-	case "Pod", "Deployment", "StatefulSet", "DaemonSet", "Job", "CronJob":
-		findings = append(findings, s.checkPodSecurity(manifest, relPath)...)
-	case "Service":
-		findings = append(findings, s.checkServiceSecurity(manifest, relPath)...)
-	case "NetworkPolicy":
-		findings = append(findings, s.checkNetworkPolicy(manifest, relPath)...)
-	case "Role", "ClusterRole":
-		findings = append(findings, s.checkRBAC(manifest, relPath)...)
+		switch kind {
+		case "Pod", "Deployment", "StatefulSet", "DaemonSet", "Job", "CronJob", "ReplicaSet":
+			findings = append(findings, s.checkPodSecurity(manifest, docPath)...)
+		case "Service":
+			findings = append(findings, s.checkServiceSecurity(manifest, docPath)...)
+		case "Role", "ClusterRole":
+			findings = append(findings, s.checkRBAC(manifest, docPath)...)
+		}
 	}
 
 	return findings
 }
 
-// checkPodSecurity checks pod security settings
+func decodeK8sDocuments(content []byte) ([]map[string]interface{}, error) {
+	dec := yaml.NewDecoder(bytes.NewReader(content))
+	var docs []map[string]interface{}
+	for {
+		var doc map[string]interface{}
+		err := dec.Decode(&doc)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		if doc == nil {
+			continue
+		}
+		if _, ok := doc["apiVersion"]; !ok {
+			continue
+		}
+		docs = append(docs, doc)
+	}
+	return docs, nil
+}
+
 func (s *KubernetesScanner) checkPodSecurity(manifest map[string]interface{}, relPath string) []api.Finding {
 	var findings []api.Finding
 
-	// Get pod spec
 	spec := s.getPodSpec(manifest)
 	if spec == nil {
 		return findings
 	}
 
-	// Check containers
-	containers, ok := spec["containers"].([]interface{})
-	if !ok {
-		return findings
+	podSC, _ := spec["securityContext"].(map[string]interface{})
+
+	if hostNetwork, ok := asBool(spec["hostNetwork"]); ok && hostNetwork {
+		findings = append(findings, k8sFinding("IAC-K8S-host-network", "k8s-host-network",
+			"Host Network Enabled", "Pod uses host network namespace",
+			api.SeverityHigh, relPath, "hostNetwork: true",
+			"Remove hostNetwork or set to false"))
+	}
+	if hostPID, ok := asBool(spec["hostPID"]); ok && hostPID {
+		findings = append(findings, k8sFinding("IAC-K8S-host-pid", "k8s-host-pid",
+			"Host PID Namespace Enabled", "Pod uses host PID namespace",
+			api.SeverityHigh, relPath, "hostPID: true",
+			"Remove hostPID or set to false"))
 	}
 
-	for _, cont := range containers {
-		container, ok := cont.(map[string]interface{})
+	for _, container := range collectContainers(spec) {
+		findings = append(findings, s.checkContainer(container, podSC, relPath)...)
+	}
+
+	return findings
+}
+
+func collectContainers(spec map[string]interface{}) []map[string]interface{} {
+	var out []map[string]interface{}
+	for _, key := range []string{"containers", "initContainers", "ephemeralContainers"} {
+		list, ok := spec[key].([]interface{})
 		if !ok {
 			continue
 		}
-
-		// Check privileged containers
-		if secContext, ok := container["securityContext"].(map[string]interface{}); ok {
-			if privileged, ok := secContext["privileged"].(bool); ok && privileged {
-				findings = append(findings, api.Finding{
-					ID:          "IAC-K8S-privileged-container",
-					Type:        api.FindingTypeMisconfiguration,
-					Severity:    api.SeverityCritical,
-					Title:       "Privileged Container Detected",
-					Description: "Container is running in privileged mode, which grants all capabilities",
-					Location: api.Location{
-						File:    relPath,
-						Snippet: "privileged: true",
-					},
-					Remediation: "Remove privileged flag or use specific capabilities instead",
-					Scanner:     "iac",
-					RuleID:      "k8s-privileged",
-					Confidence:  1.0,
-				})
-			}
-
-			// Check if running as root
-			if runAsUser, ok := secContext["runAsUser"].(int); ok && runAsUser == 0 {
-				findings = append(findings, api.Finding{
-					ID:          "IAC-K8S-run-as-root",
-					Type:        api.FindingTypeMisconfiguration,
-					Severity:    api.SeverityHigh,
-					Title:       "Container Running as Root",
-					Description: "Container is configured to run as root user (UID 0)",
-					Location: api.Location{
-						File:    relPath,
-						Snippet: "runAsUser: 0",
-					},
-					Remediation: "Set runAsUser to a non-root UID (e.g., 1000)",
-					Scanner:     "iac",
-					RuleID:      "k8s-run-as-root",
-					Confidence:  1.0,
-				})
-			}
-
-			// Check if runAsNonRoot is not set
-			if runAsNonRoot, ok := secContext["runAsNonRoot"].(bool); !ok || !runAsNonRoot {
-				findings = append(findings, api.Finding{
-					ID:          "IAC-K8S-missing-run-as-non-root",
-					Type:        api.FindingTypeMisconfiguration,
-					Severity:    api.SeverityMedium,
-					Title:       "runAsNonRoot Not Enforced",
-					Description: "Container does not enforce running as non-root user",
-					Location: api.Location{
-						File:    relPath,
-						Snippet: "securityContext",
-					},
-					Remediation: "Set runAsNonRoot: true in securityContext",
-					Scanner:     "iac",
-					RuleID:      "k8s-run-as-non-root",
-					Confidence:  0.8,
-				})
-			}
-
-			// Check if allowPrivilegeEscalation is enabled
-			if allowPrivEsc, ok := secContext["allowPrivilegeEscalation"].(bool); ok && allowPrivEsc {
-				findings = append(findings, api.Finding{
-					ID:          "IAC-K8S-priv-escalation",
-					Type:        api.FindingTypeMisconfiguration,
-					Severity:    api.SeverityHigh,
-					Title:       "Privilege Escalation Allowed",
-					Description: "Container allows privilege escalation",
-					Location: api.Location{
-						File:    relPath,
-						Snippet: "allowPrivilegeEscalation: true",
-					},
-					Remediation: "Set allowPrivilegeEscalation: false",
-					Scanner:     "iac",
-					RuleID:      "k8s-priv-escalation",
-					Confidence:  1.0,
-				})
-			}
-		}
-
-		// Check for resource limits
-		if _, hasResources := container["resources"]; !hasResources {
-			findings = append(findings, api.Finding{
-				ID:          "IAC-K8S-no-resource-limits",
-				Type:        api.FindingTypeMisconfiguration,
-				Severity:    api.SeverityLow,
-				Title:       "Missing Resource Limits",
-				Description: "Container does not have CPU/memory limits defined",
-				Location: api.Location{
-					File:    relPath,
-					Snippet: fmt.Sprintf("container: %s", container["name"]),
-				},
-				Remediation: "Define resource requests and limits",
-				Scanner:     "iac",
-				RuleID:      "k8s-resource-limits",
-				Confidence:  0.9,
-			})
-		}
-
-		// Check for latest tag
-		if image, ok := container["image"].(string); ok {
-			if strings.HasSuffix(image, ":latest") || !strings.Contains(image, ":") {
-				findings = append(findings, api.Finding{
-					ID:          "IAC-K8S-latest-tag",
-					Type:        api.FindingTypeMisconfiguration,
-					Severity:    api.SeverityMedium,
-					Title:       "Using 'latest' Image Tag",
-					Description: "Container uses 'latest' or no tag, which can lead to unpredictable deployments",
-					Location: api.Location{
-						File:    relPath,
-						Snippet: fmt.Sprintf("image: %s", image),
-					},
-					Remediation: "Use specific image tags or digests",
-					Scanner:     "iac",
-					RuleID:      "k8s-latest-tag",
-					Confidence:  1.0,
-				})
+		for _, item := range list {
+			if c, ok := item.(map[string]interface{}); ok {
+				out = append(out, c)
 			}
 		}
 	}
+	return out
+}
 
-	// Check hostNetwork
-	if hostNetwork, ok := spec["hostNetwork"].(bool); ok && hostNetwork {
-		findings = append(findings, api.Finding{
-			ID:          "IAC-K8S-host-network",
-			Type:        api.FindingTypeMisconfiguration,
-			Severity:    api.SeverityHigh,
-			Title:       "Host Network Enabled",
-			Description: "Pod uses host network namespace",
-			Location: api.Location{
-				File:    relPath,
-				Snippet: "hostNetwork: true",
-			},
-			Remediation: "Remove hostNetwork or set to false",
-			Scanner:     "iac",
-			RuleID:      "k8s-host-network",
-			Confidence:  1.0,
-		})
+func (s *KubernetesScanner) checkContainer(container, podSC map[string]interface{}, relPath string) []api.Finding {
+	var findings []api.Finding
+	name, _ := container["name"].(string)
+	secContext := mergeSecurityContext(podSC, container)
+
+	if privileged, ok := asBool(secContext["privileged"]); ok && privileged {
+		findings = append(findings, k8sFinding("IAC-K8S-privileged-container", "k8s-privileged",
+			"Privileged Container Detected",
+			fmt.Sprintf("Container %q is running in privileged mode, which grants all capabilities", name),
+			api.SeverityCritical, relPath, "privileged: true",
+			"Remove privileged flag or use specific capabilities instead"))
 	}
 
-	// Check hostPID
-	if hostPID, ok := spec["hostPID"].(bool); ok && hostPID {
-		findings = append(findings, api.Finding{
-			ID:          "IAC-K8S-host-pid",
-			Type:        api.FindingTypeMisconfiguration,
-			Severity:    api.SeverityHigh,
-			Title:       "Host PID Namespace Enabled",
-			Description: "Pod uses host PID namespace",
-			Location: api.Location{
-				File:    relPath,
-				Snippet: "hostPID: true",
-			},
-			Remediation: "Remove hostPID or set to false",
-			Scanner:     "iac",
-			RuleID:      "k8s-host-pid",
-			Confidence:  1.0,
-		})
+	if runAsUser, ok := asInt(secContext["runAsUser"]); ok && runAsUser == 0 {
+		findings = append(findings, k8sFinding("IAC-K8S-run-as-root", "k8s-run-as-root",
+			"Container Running as Root",
+			fmt.Sprintf("Container %q is configured to run as root user (UID 0)", name),
+			api.SeverityHigh, relPath, "runAsUser: 0",
+			"Set runAsUser to a non-root UID (e.g., 1000)"))
+	}
+
+	runAsNonRoot, hasRunAsNonRoot := asBool(secContext["runAsNonRoot"])
+	if !hasRunAsNonRoot || !runAsNonRoot {
+		findings = append(findings, k8sFinding("IAC-K8S-missing-run-as-non-root", "k8s-run-as-non-root",
+			"runAsNonRoot Not Enforced",
+			fmt.Sprintf("Container %q does not enforce running as non-root user", name),
+			api.SeverityMedium, relPath, "securityContext",
+			"Set runAsNonRoot: true in pod or container securityContext"))
+	}
+
+	if allowPrivEsc, ok := asBool(secContext["allowPrivilegeEscalation"]); ok && allowPrivEsc {
+		findings = append(findings, k8sFinding("IAC-K8S-priv-escalation", "k8s-priv-escalation",
+			"Privilege Escalation Allowed",
+			fmt.Sprintf("Container %q allows privilege escalation", name),
+			api.SeverityHigh, relPath, "allowPrivilegeEscalation: true",
+			"Set allowPrivilegeEscalation: false"))
+	}
+
+	if _, hasResources := container["resources"]; !hasResources {
+		findings = append(findings, k8sFinding("IAC-K8S-no-resource-limits", "k8s-resource-limits",
+			"Missing Resource Limits",
+			fmt.Sprintf("Container %q does not have CPU/memory limits defined", name),
+			api.SeverityLow, relPath, fmt.Sprintf("container: %s", name),
+			"Define resource requests and limits"))
+	}
+
+	if image, ok := container["image"].(string); ok {
+		if strings.HasSuffix(image, ":latest") || !strings.Contains(image, ":") {
+			findings = append(findings, k8sFinding("IAC-K8S-latest-tag", "k8s-latest-tag",
+				"Using 'latest' Image Tag",
+				"Container uses 'latest' or no tag, which can lead to unpredictable deployments",
+				api.SeverityMedium, relPath, fmt.Sprintf("image: %s", image),
+				"Use specific image tags or digests"))
+		}
 	}
 
 	return findings
 }
 
-// checkServiceSecurity checks service security
-func (s *KubernetesScanner) checkServiceSecurity(manifest map[string]interface{}, relPath string) []api.Finding {
-	var findings []api.Finding
+func mergeSecurityContext(podSC, container map[string]interface{}) map[string]interface{} {
+	merged := map[string]interface{}{}
+	for k, v := range podSC {
+		merged[k] = v
+	}
+	if csc, ok := container["securityContext"].(map[string]interface{}); ok {
+		for k, v := range csc {
+			merged[k] = v
+		}
+	}
+	return merged
+}
 
+func (s *KubernetesScanner) checkServiceSecurity(manifest map[string]interface{}, relPath string) []api.Finding {
 	spec, ok := manifest["spec"].(map[string]interface{})
 	if !ok {
-		return findings
+		return nil
 	}
-
-	// Check for LoadBalancer type without appropriate controls
 	if svcType, ok := spec["type"].(string); ok && svcType == "LoadBalancer" {
-		findings = append(findings, api.Finding{
-			ID:          "IAC-K8S-loadbalancer-service",
-			Type:        api.FindingTypeMisconfiguration,
-			Severity:    api.SeverityMedium,
-			Title:       "LoadBalancer Service Exposes Public IP",
-			Description: "Service type LoadBalancer may expose services publicly",
-			Location: api.Location{
-				File:    relPath,
-				Snippet: "type: LoadBalancer",
-			},
-			Remediation: "Ensure LoadBalancer has appropriate firewall rules and consider using Ingress",
-			Scanner:     "iac",
-			RuleID:      "k8s-loadbalancer",
-			Confidence:  0.8,
-		})
+		return []api.Finding{k8sFinding("IAC-K8S-loadbalancer-service", "k8s-loadbalancer",
+			"LoadBalancer Service Exposes Public IP",
+			"Service type LoadBalancer may expose services publicly",
+			api.SeverityMedium, relPath, "type: LoadBalancer",
+			"Ensure LoadBalancer has appropriate firewall rules and consider using Ingress")}
 	}
-
-	return findings
+	return nil
 }
 
-// checkNetworkPolicy checks network policy configuration
-func (s *KubernetesScanner) checkNetworkPolicy(manifest map[string]interface{}, relPath string) []api.Finding {
-	// Placeholder for network policy checks
-	return []api.Finding{}
-}
-
-// checkRBAC checks RBAC permissions
 func (s *KubernetesScanner) checkRBAC(manifest map[string]interface{}, relPath string) []api.Finding {
 	var findings []api.Finding
-
 	rules, ok := manifest["rules"].([]interface{})
 	if !ok {
 		return findings
 	}
-
 	for _, r := range rules {
 		rule, ok := r.(map[string]interface{})
 		if !ok {
 			continue
 		}
-
-		// Check for wildcard permissions
 		if verbs, ok := rule["verbs"].([]interface{}); ok {
 			for _, v := range verbs {
 				if v == "*" {
-					findings = append(findings, api.Finding{
-						ID:          "IAC-K8S-rbac-wildcard-verbs",
-						Type:        api.FindingTypeMisconfiguration,
-						Severity:    api.SeverityHigh,
-						Title:       "RBAC Wildcard Verbs",
-						Description: "RBAC rule uses wildcard (*) for verbs",
-						Location: api.Location{
-							File:    relPath,
-							Snippet: "verbs: ['*']",
-						},
-						Remediation: "Specify exact verbs needed instead of wildcard",
-						Scanner:     "iac",
-						RuleID:      "k8s-rbac-wildcard",
-						Confidence:  1.0,
-					})
+					findings = append(findings, k8sFinding("IAC-K8S-rbac-wildcard-verbs", "k8s-rbac-wildcard",
+						"RBAC Wildcard Verbs",
+						"RBAC rule uses wildcard (*) for verbs",
+						api.SeverityHigh, relPath, "verbs: ['*']",
+						"Specify exact verbs needed instead of wildcard"))
 					break
 				}
 			}
 		}
 	}
-
 	return findings
 }
 
-// getPodSpec extracts pod spec from various resource types
 func (s *KubernetesScanner) getPodSpec(manifest map[string]interface{}) map[string]interface{} {
 	kind, _ := manifest["kind"].(string)
+	spec, _ := manifest["spec"].(map[string]interface{})
+	if spec == nil {
+		return nil
+	}
 
 	if kind == "Pod" {
-		spec, _ := manifest["spec"].(map[string]interface{})
 		return spec
 	}
 
-	// For Deployment, StatefulSet, etc., get template.spec
-	spec, ok := manifest["spec"].(map[string]interface{})
-	if !ok {
-		return nil
+	if kind == "CronJob" {
+		jobTemplate, _ := spec["jobTemplate"].(map[string]interface{})
+		jobSpec, _ := jobTemplate["spec"].(map[string]interface{})
+		template, _ := jobSpec["template"].(map[string]interface{})
+		podSpec, _ := template["spec"].(map[string]interface{})
+		return podSpec
 	}
 
-	template, ok := spec["template"].(map[string]interface{})
-	if !ok {
-		return nil
-	}
-
+	template, _ := spec["template"].(map[string]interface{})
 	podSpec, _ := template["spec"].(map[string]interface{})
 	return podSpec
+}
+
+func k8sFinding(id, ruleID, title, desc string, sev api.Severity, file, snippet, remediation string) api.Finding {
+	return api.Finding{
+		ID:          id,
+		Type:        api.FindingTypeMisconfiguration,
+		Severity:    sev,
+		Title:       title,
+		Description: desc,
+		Location:    api.Location{File: file, Snippet: snippet},
+		Remediation: remediation,
+		Scanner:     "iac",
+		RuleID:      ruleID,
+		Confidence:  1.0,
+	}
+}
+
+func asBool(v interface{}) (bool, bool) {
+	b, ok := v.(bool)
+	return b, ok
+}
+
+func asInt(v interface{}) (int, bool) {
+	switch n := v.(type) {
+	case int:
+		return n, true
+	case int64:
+		return int(n), true
+	case float64:
+		return int(n), true
+	default:
+		return 0, false
+	}
 }

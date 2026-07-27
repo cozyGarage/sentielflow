@@ -33,7 +33,16 @@ Findings mask secret values in snippets using the shared `redact` package — re
 
 ### Implementation
 
-Line- and block-based parsing with regex rules and multi-line checks. Snippets in reports are passed through `redact.Snippet` for safe output.
+- **Terraform**: per-resource parsing for S3 encryption/public-block and multi-line security group ingress (SSH/RDP open to the world)
+- **Kubernetes**: multi-document YAML, `initContainers` / `ephemeralContainers`, pod-level `securityContext` inheritance, CronJob templates
+- **Dockerfile**: instruction parsing with line continuations, case-insensitive commands, final-stage `USER` / `HEALTHCHECK` checks
+
+Config knobs:
+
+- `scanners.iac.frameworks` — enable only selected frameworks (`terraform`, `kubernetes`, `dockerfile`, …)
+- `scanners.iac.skip_rules` — suppress findings by rule ID
+- `scanners.iac.severity` — minimum severity gate
+
 
 ---
 

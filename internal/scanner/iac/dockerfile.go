@@ -1,7 +1,6 @@
 package iac
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"os"
@@ -27,102 +26,214 @@ type DockerfileRule struct {
 	Description string
 	Severity    api.Severity
 	Pattern     *regexp.Regexp
-	Check       func(lines []string, lineNum int, line string) bool
+	Check       func(inst instruction, all []instruction) bool
+	FileCheck   func(all []instruction) bool
 	Remediation string
+}
+
+type instruction struct {
+	Cmd     string
+	Args    string
+	Raw     string
+	Line    int
+	EndLine int
 }
 
 // NewDockerfileScanner creates a new Dockerfile scanner
 func NewDockerfileScanner(cfg *config.Config) *DockerfileScanner {
-	s := &DockerfileScanner{
-		config: cfg,
-	}
+	s := &DockerfileScanner{config: cfg}
 	s.rules = s.loadRules()
 	return s
 }
 
 // ScanFile scans a Dockerfile
 func (s *DockerfileScanner) ScanFile(ctx context.Context, filePath, basePath string) []api.Finding {
-	file, err := os.Open(filePath)
+	content, err := os.ReadFile(filePath)
 	if err != nil {
-		return []api.Finding{}
+		return nil
 	}
-	defer file.Close()
+
+	relPath, _ := filepath.Rel(basePath, filePath)
+	instructions := parseDockerfileInstructions(string(content))
 
 	var findings []api.Finding
-	var lines []string
-	relPath, _ := filepath.Rel(basePath, filePath)
 
-	scanner := bufio.NewScanner(file)
-	lineNum := 0
-
-	// Read all lines first for multi-line checks
-	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
-	}
-
-	// Scan each line
-	for i, line := range lines {
+	for _, inst := range instructions {
 		select {
 		case <-ctx.Done():
 			return findings
 		default:
 		}
 
-		lineNum = i + 1
-		trimmed := strings.TrimSpace(line)
-
-		// Skip comments and empty lines
-		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
-			continue
-		}
-
-		// Check rules
 		for _, rule := range s.rules {
-			var matches bool
+			if rule.FileCheck != nil {
+				continue
+			}
+			matches := false
 			if rule.Pattern != nil {
-				matches = rule.Pattern.MatchString(line)
+				matches = rule.Pattern.MatchString(inst.Raw)
 			}
 			if rule.Check != nil {
-				matches = rule.Check(lines, lineNum, line)
+				matches = rule.Check(inst, instructions)
 			}
-
-			if matches {
-				finding := api.Finding{
-					ID:          fmt.Sprintf("IAC-DOCKER-%s-%d", rule.ID, lineNum),
-					Type:        api.FindingTypeMisconfiguration,
-					Severity:    rule.Severity,
-					Title:       rule.Name,
-					Description: rule.Description,
-					Location: api.Location{
-						File:      relPath,
-						StartLine: lineNum,
-						EndLine:   lineNum,
-						Snippet:   redact.Snippet(line),
-					},
-					Remediation: rule.Remediation,
-					Scanner:     "iac",
-					RuleID:      rule.ID,
-					Confidence:  0.9,
-				}
-
-				findings = append(findings, finding)
+			if !matches {
+				continue
 			}
+			findings = append(findings, api.Finding{
+				ID:          fmt.Sprintf("IAC-DOCKER-%s-%d", rule.ID, inst.Line),
+				Type:        api.FindingTypeMisconfiguration,
+				Severity:    rule.Severity,
+				Title:       rule.Name,
+				Description: rule.Description,
+				Location: api.Location{
+					File:      relPath,
+					StartLine: inst.Line,
+					EndLine:   inst.EndLine,
+					Snippet:   redact.Snippet(inst.Raw),
+				},
+				Remediation: rule.Remediation,
+				Scanner:     "iac",
+				RuleID:      rule.ID,
+				Confidence:  0.9,
+			})
 		}
+	}
+
+	// File-level checks once (missing USER / HEALTHCHECK on final stage)
+	for _, rule := range s.rules {
+		if rule.FileCheck == nil || !rule.FileCheck(instructions) {
+			continue
+		}
+		line := 1
+		if len(instructions) > 0 {
+			line = instructions[len(instructions)-1].EndLine
+		}
+		findings = append(findings, api.Finding{
+			ID:          fmt.Sprintf("IAC-DOCKER-%s-%d", rule.ID, line),
+			Type:        api.FindingTypeMisconfiguration,
+			Severity:    rule.Severity,
+			Title:       rule.Name,
+			Description: rule.Description,
+			Location: api.Location{
+				File:      relPath,
+				StartLine: line,
+				EndLine:   line,
+			},
+			Remediation: rule.Remediation,
+			Scanner:     "iac",
+			RuleID:      rule.ID,
+			Confidence:  0.9,
+		})
 	}
 
 	return findings
 }
 
-// loadRules loads Dockerfile security rules
+func parseDockerfileInstructions(content string) []instruction {
+	rawLines := strings.Split(content, "\n")
+	var logical []struct {
+		text     string
+		start    int
+		end      int
+	}
+
+	for i := 0; i < len(rawLines); {
+		line := rawLines[i]
+		trimmed := strings.TrimRight(line, " \t\r")
+		if strings.TrimSpace(trimmed) == "" || strings.HasPrefix(strings.TrimSpace(trimmed), "#") {
+			i++
+			continue
+		}
+
+		start := i + 1
+		end := i + 1
+		text := trimmed
+		for strings.HasSuffix(strings.TrimRight(text, " \t"), "\\") {
+			text = strings.TrimRight(text, " \t")
+			text = strings.TrimSuffix(text, "\\")
+			i++
+			if i >= len(rawLines) {
+				break
+			}
+			next := strings.TrimRight(rawLines[i], " \t\r")
+			text += " " + strings.TrimSpace(next)
+			end = i + 1
+		}
+		logical = append(logical, struct {
+			text  string
+			start int
+			end   int
+		}{text: text, start: start, end: end})
+		i++
+	}
+
+	var out []instruction
+	for _, l := range logical {
+		fields := strings.Fields(l.text)
+		if len(fields) == 0 {
+			continue
+		}
+		cmd := strings.ToUpper(fields[0])
+		args := strings.TrimSpace(l.text[len(fields[0]):])
+		out = append(out, instruction{
+			Cmd:     cmd,
+			Args:    args,
+			Raw:     l.text,
+			Line:    l.start,
+			EndLine: l.end,
+		})
+	}
+	return out
+}
+
+func finalStageInstructions(all []instruction) []instruction {
+	start := 0
+	for i, inst := range all {
+		if inst.Cmd == "FROM" {
+			start = i
+		}
+	}
+	return all[start:]
+}
+
+func finalStageHasUser(all []instruction) bool {
+	for _, inst := range finalStageInstructions(all) {
+		if inst.Cmd == "USER" {
+			user := strings.Fields(inst.Args)
+			if len(user) == 0 {
+				continue
+			}
+			u := strings.ToLower(user[0])
+			if u != "root" && u != "0" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func hasHealthcheck(all []instruction) bool {
+	for _, inst := range finalStageInstructions(all) {
+		if inst.Cmd == "HEALTHCHECK" {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *DockerfileScanner) loadRules() []*DockerfileRule {
 	return []*DockerfileRule{
-		// Base image issues
 		{
 			ID:          "latest-tag",
 			Name:        "Using 'latest' Tag",
 			Description: "Dockerfile uses 'latest' tag which can lead to unpredictable builds",
 			Severity:    api.SeverityMedium,
-			Pattern:     regexp.MustCompile(`^FROM\s+[^\s:]+:latest`),
+			Check: func(inst instruction, _ []instruction) bool {
+				if inst.Cmd != "FROM" {
+					return false
+				}
+				return regexp.MustCompile(`(?i)^[^\s:]+:latest(?:\s|$)`).MatchString(strings.TrimSpace(inst.Args))
+			},
 			Remediation: "Use specific version tags instead of 'latest'",
 		},
 		{
@@ -130,48 +241,57 @@ func (s *DockerfileScanner) loadRules() []*DockerfileRule {
 			Name:        "No Image Tag Specified",
 			Description: "Dockerfile base image has no tag (defaults to 'latest')",
 			Severity:    api.SeverityMedium,
-			Pattern:     regexp.MustCompile(`^FROM\s+[^\s:]+\s*$`),
+			Check: func(inst instruction, _ []instruction) bool {
+				if inst.Cmd != "FROM" {
+					return false
+				}
+				args := strings.Fields(inst.Args)
+				if len(args) == 0 {
+					return false
+				}
+				image := args[0]
+				if strings.EqualFold(image, "scratch") {
+					return false
+				}
+				// FROM image AS name
+				return !strings.Contains(image, ":") && !strings.Contains(image, "@")
+			},
 			Remediation: "Specify a version tag for the base image",
 		},
-
-		// User and permissions
 		{
 			ID:          "missing-user",
 			Name:        "Missing USER Instruction",
-			Description: "Dockerfile does not switch to non-root user",
+			Description: "Final image stage does not switch to a non-root user",
 			Severity:    api.SeverityHigh,
-			Check: func(lines []string, lineNum int, line string) bool {
-				// Check if this is the last instruction and no USER was set
-				if lineNum == len(lines) {
-					hasUser := false
-					for _, l := range lines {
-						if strings.HasPrefix(strings.TrimSpace(l), "USER"+" ") {
-							hasUser = true
-							break
-						}
-					}
-					return !hasUser
-				}
-				return false
+			FileCheck: func(all []instruction) bool {
+				return !finalStageHasUser(all)
 			},
-			Remediation: "Add USER instruction to run container as non-root user",
+			Remediation: "Add USER instruction to run container as non-root user in the final stage",
 		},
 		{
 			ID:          "user-root",
 			Name:        "Explicit Root User",
 			Description: "Dockerfile explicitly sets USER to root",
 			Severity:    api.SeverityHigh,
-			Pattern:     regexp.MustCompile(`^USER\s+` + `(root|0)\s*$`),
+			Check: func(inst instruction, _ []instruction) bool {
+				if inst.Cmd != "USER" {
+					return false
+				}
+				fields := strings.Fields(inst.Args)
+				if len(fields) == 0 {
+					return false
+				}
+				u := strings.ToLower(fields[0])
+				return u == "root" || u == "0"
+			},
 			Remediation: "Use a non-root user instead",
 		},
-
-		// Secrets and credentials
 		{
 			ID:          "hardcoded-secret",
 			Name:        "Hardcoded Secret in ENV",
 			Description: "Environment variable appears to contain hardcoded secret",
 			Severity:    api.SeverityCritical,
-			Pattern:     regexp.MustCompile(`^ENV\s+.*(PASSWORD|SECRET|TOKEN|KEY)=["']?[^$\{]`),
+			Pattern:     regexp.MustCompile(`(?i)^ENV\s+.*(PASSWORD|SECRET|TOKEN|KEY)=["']?[^$\{]`),
 			Remediation: "Use build arguments or runtime secrets instead of hardcoding",
 		},
 		{
@@ -179,23 +299,25 @@ func (s *DockerfileScanner) loadRules() []*DockerfileRule {
 			Name:        "SSH Port Exposed",
 			Description: "Dockerfile exposes SSH port 22",
 			Severity:    api.SeverityMedium,
-			Pattern:     regexp.MustCompile(`^EXPOSE\s+22\s*$`),
+			Check: func(inst instruction, _ []instruction) bool {
+				return inst.Cmd == "EXPOSE" && regexp.MustCompile(`(?:^|\s)22(?:/|\s|$)`).MatchString(inst.Args)
+			},
 			Remediation: "Avoid exposing SSH in containers, use exec instead",
 		},
-
-		// Package management
 		{
 			ID:          "apt-no-cleanup",
 			Name:        "APT Cache Not Cleaned",
 			Description: "apt-get install without cleanup increases image size",
 			Severity:    api.SeverityLow,
-			Check: func(lines []string, lineNum int, line string) bool {
-				if strings.Contains(line, "apt-get "+"install") || strings.Contains(line, "apt "+"install") {
-					// Check if there's a cleanup in the same RUN
-					return !strings.Contains(line, "rm -rf /var/lib/apt/lists") &&
-						!strings.Contains(line, "rm -rf  /var/lib/apt/lists")
+			Check: func(inst instruction, _ []instruction) bool {
+				if inst.Cmd != "RUN" {
+					return false
 				}
-				return false
+				lower := strings.ToLower(inst.Args)
+				if !strings.Contains(lower, "apt-get install") && !strings.Contains(lower, "apt install") {
+					return false
+				}
+				return !strings.Contains(lower, "rm -rf /var/lib/apt/lists")
 			},
 			Remediation: "Add 'rm -rf /var/lib/apt/lists/*' after apt-get install",
 		},
@@ -204,17 +326,19 @@ func (s *DockerfileScanner) loadRules() []*DockerfileRule {
 			Name:        "Using sudo in Container",
 			Description: "Dockerfile uses sudo which is unnecessary in containers",
 			Severity:    api.SeverityLow,
-			Pattern:     regexp.MustCompile(`\bsudo\b`),
+			Check: func(inst instruction, _ []instruction) bool {
+				return inst.Cmd == "RUN" && regexp.MustCompile(`(?i)\bsudo\b`).MatchString(inst.Args)
+			},
 			Remediation: "Remove sudo usage; run commands directly or use USER",
 		},
-
-		// Build practices
 		{
 			ID:          "curl-to-bash",
 			Name:        "Piping curl to bash",
 			Description: "Downloading and executing scripts directly is dangerous",
 			Severity:    api.SeverityHigh,
-			Pattern:     regexp.MustCompile(`curl.*\|\s*(ba)?sh`),
+			Check: func(inst instruction, _ []instruction) bool {
+				return inst.Cmd == "RUN" && regexp.MustCompile(`(?i)curl.*\|\s*(ba)?sh`).MatchString(inst.Args)
+			},
 			Remediation: "Download scripts, verify them, then execute",
 		},
 		{
@@ -222,53 +346,43 @@ func (s *DockerfileScanner) loadRules() []*DockerfileRule {
 			Name:        "Piping wget to bash",
 			Description: "Downloading and executing scripts directly is dangerous",
 			Severity:    api.SeverityHigh,
-			Pattern:     regexp.MustCompile(`wget.*\|\s*(ba)?sh`),
+			Check: func(inst instruction, _ []instruction) bool {
+				return inst.Cmd == "RUN" && regexp.MustCompile(`(?i)wget.*\|\s*(ba)?sh`).MatchString(inst.Args)
+			},
 			Remediation: "Download scripts, verify them, then execute",
 		},
-
-		// COPY/ADD security
 		{
 			ID:          "add-archive-extraction",
 			Name:        "Using ADD for Remote Files",
 			Description: "ADD automatically extracts archives which can be dangerous",
 			Severity:    api.SeverityMedium,
-			Pattern:     regexp.MustCompile(`^ADD\s+https?://`),
+			Check: func(inst instruction, _ []instruction) bool {
+				return inst.Cmd == "ADD" && regexp.MustCompile(`(?i)^https?://`).MatchString(strings.TrimSpace(inst.Args))
+			},
 			Remediation: "Use COPY instead of ADD, or RUN curl/wget for remote files",
 		},
-
-		// Health and monitoring
 		{
 			ID:          "no-healthcheck",
 			Name:        "Missing HEALTHCHECK",
-			Description: "Dockerfile does not define a HEALTHCHECK",
+			Description: "Final image stage does not define a HEALTHCHECK",
 			Severity:    api.SeverityLow,
-			Check: func(lines []string, lineNum int, line string) bool {
-				// Check at the end if no HEALTHCHECK was defined
-				if lineNum == len(lines) {
-					for _, l := range lines {
-						if strings.HasPrefix(strings.TrimSpace(l), "HEALTH"+"CHECK ") {
-							return false
-						}
-					}
-					return true
-				}
-				return false
-			},
+			FileCheck:   func(all []instruction) bool { return !hasHealthcheck(all) },
 			Remediation: "Add HEALTHCHECK instruction for container health monitoring",
 		},
-
-		// Privileged operations
 		{
 			ID:          "update-alone",
 			Name:        "apt-get update Alone",
 			Description: "apt-get update should be combined with install to avoid cache issues",
 			Severity:    api.SeverityLow,
-			Check: func(lines []string, lineNum int, line string) bool {
-				if strings.Contains(line, "apt-get "+"update") || strings.Contains(line, "apt "+"update") {
-					// Check if install is in the same RUN command
-					return !strings.Contains(line, "install")
+			Check: func(inst instruction, _ []instruction) bool {
+				if inst.Cmd != "RUN" {
+					return false
 				}
-				return false
+				lower := strings.ToLower(inst.Args)
+				if !strings.Contains(lower, "apt-get update") && !strings.Contains(lower, "apt update") {
+					return false
+				}
+				return !strings.Contains(lower, "install")
 			},
 			Remediation: "Combine apt-get update && apt-get install in single RUN",
 		},

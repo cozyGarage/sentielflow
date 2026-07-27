@@ -1,4 +1,3 @@
-// Package iac provides Infrastructure-as-Code security scanning
 package iac
 
 import (
@@ -46,26 +45,35 @@ func (s *Scanner) Supports(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
 	base := strings.ToLower(filepath.Base(path))
 
-	// Terraform files
 	if ext == ".tf" || ext == ".tfvars" {
-		return true
+		return s.frameworkEnabled("terraform")
 	}
 
-	// Kubernetes manifests
 	if ext == ".yaml" || ext == ".yml" {
-		return true
+		return s.frameworkEnabled("kubernetes")
 	}
 
-	// Dockerfile (exclude Go source files named dockerfile.go)
 	if ext != ".go" && (base == "dockerfile" || strings.HasPrefix(base, "dockerfile.")) {
-		return true
+		return s.frameworkEnabled("dockerfile")
 	}
 
-	// CloudFormation
 	if ext == ".json" && strings.Contains(strings.ToLower(path), "cloudformation") {
-		return true
+		return s.frameworkEnabled("cloudformation")
 	}
 
+	return false
+}
+
+func (s *Scanner) frameworkEnabled(name string) bool {
+	frameworks := s.config.Scanners.IaC.Frameworks
+	if len(frameworks) == 0 {
+		return true
+	}
+	for _, f := range frameworks {
+		if strings.EqualFold(strings.TrimSpace(f), name) {
+			return true
+		}
+	}
 	return false
 }
 
@@ -77,7 +85,6 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 
 	var files []string
 
-	// Check if path is a file or directory
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil, err
@@ -94,7 +101,6 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 
 	result.FilesCount = len(files)
 
-	// Scan files concurrently
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	semaphore := make(chan struct{}, 5)
@@ -107,6 +113,7 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 			defer func() { <-semaphore }()
 
 			findings := s.scanFile(ctx, filePath, path)
+			findings = s.filterFindings(findings)
 
 			if len(findings) > 0 {
 				mu.Lock()
@@ -120,24 +127,44 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 	return result, nil
 }
 
+func (s *Scanner) filterFindings(findings []api.Finding) []api.Finding {
+	if len(findings) == 0 {
+		return findings
+	}
+
+	skip := map[string]bool{}
+	for _, rule := range s.config.Scanners.IaC.SkipRules {
+		skip[strings.TrimSpace(rule)] = true
+	}
+
+	minSeverity := s.config.Scanners.IaC.Severity
+	var out []api.Finding
+	for _, f := range findings {
+		if skip[f.RuleID] || skip[f.ID] {
+			continue
+		}
+		if minSeverity != "" && !api.MeetsMinimum(f.Severity, minSeverity) {
+			continue
+		}
+		out = append(out, f)
+	}
+	return out
+}
+
 // scanFile determines file type and delegates to appropriate scanner
 func (s *Scanner) scanFile(ctx context.Context, filePath, basePath string) []api.Finding {
 	ext := strings.ToLower(filepath.Ext(filePath))
 	base := strings.ToLower(filepath.Base(filePath))
 
-	// Terraform
-	if ext == ".tf" || ext == ".tfvars" {
+	if (ext == ".tf" || ext == ".tfvars") && s.frameworkEnabled("terraform") {
 		return s.terraform.ScanFile(ctx, filePath, basePath)
 	}
 
-	// Dockerfile
-	if ext != ".go" && (base == "dockerfile" || strings.HasPrefix(base, "dockerfile.")) {
+	if ext != ".go" && (base == "dockerfile" || strings.HasPrefix(base, "dockerfile.")) && s.frameworkEnabled("dockerfile") {
 		return s.docker.ScanFile(ctx, filePath, basePath)
 	}
 
-	// Kubernetes (YAML/YML files)
-	if ext == ".yaml" || ext == ".yml" {
-		// Check if it's a Kubernetes manifest
+	if (ext == ".yaml" || ext == ".yml") && s.frameworkEnabled("kubernetes") {
 		if s.k8s.IsKubernetesManifest(filePath) {
 			return s.k8s.ScanFile(ctx, filePath, basePath)
 		}
@@ -155,11 +182,11 @@ func (s *Scanner) collectIaCFiles(dir string) ([]string, error) {
 			return err
 		}
 
-		// Skip common directories
 		if info.IsDir() {
 			name := info.Name()
 			if name == ".git" || name == "node_modules" || name == "vendor" ||
-				name == ".terraform" || name == "__pycache__" || name == ".venv" {
+				name == ".terraform" || name == "__pycache__" || name == ".venv" ||
+				name == "dist" || name == "build" {
 				return filepath.SkipDir
 			}
 			return nil
