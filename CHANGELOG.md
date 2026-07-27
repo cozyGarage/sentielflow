@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Python dependency parsing for `pyproject.toml`, `poetry.lock`, and `Pipfile.lock` (in addition to `requirements.txt`)
+- Maven `pom.xml` dependency parsing with basic property resolution
+- Cargo `Cargo.lock` / `Cargo.toml` dependency parsing
+
 ### Fixed
 
 - `--all` now also applies `--fail-on`, `--baseline`, and `--container-image` (no early return)

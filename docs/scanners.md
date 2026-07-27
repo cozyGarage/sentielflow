@@ -45,7 +45,16 @@ Queries the [OSV API](https://osv.dev/) for Go, npm, pip, Maven, and Cargo ecosy
 
 ### Supported files
 
-`go.mod`, `package.json`, `requirements.txt`, `pom.xml`, `Cargo.toml`, and related lockfiles.
+| Ecosystem | Manifests / lockfiles |
+| --- | --- |
+| Go | `go.mod` |
+| npm | `package.json` |
+| Python (PyPI) | `requirements.txt`, `pyproject.toml`, `poetry.lock`, `Pipfile.lock` |
+| Maven | `pom.xml` (resolves basic `${property}` versions) |
+| Cargo | `Cargo.lock` (preferred), `Cargo.toml` fallback |
+
+Unpinned or URL-based Python/Cargo requirements without a concrete version are skipped so OSV queries stay meaningful.
+
 
 ### Filtering
 
@@ -85,7 +94,7 @@ The engine embeds Open Policy Agent. At scan time it:
 2. Collects Kubernetes manifests and Terraform resources as OPA input
 3. Evaluates each policy and converts violations to findings
 
-### Built-in policies (`policies/`)
+### Built-in policies (`policies.builtin`)
 
 | Policy | Description |
 | --- | --- |
@@ -93,6 +102,8 @@ The engine embeds Open Policy Agent. At scan time it:
 | `no-privileged-containers` | Denies privileged K8s containers and missing `runAsNonRoot` |
 | `require-https` | Ensures TLS on ingress and load balancers |
 | `enforce-encryption` | Requires encryption at rest for S3, RDS, EBS, EFS |
+
+Embedded in the binary; project `.rego` files with the same name override.
 
 ### CLI
 
