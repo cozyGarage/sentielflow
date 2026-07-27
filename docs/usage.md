@@ -10,7 +10,7 @@ Scan the current directory with all implemented scanners:
 sentinelflow scan --all .
 ```
 
-`--all` enables secrets, IaC, dependencies, SAST, container (when configured), and license scanning. It does **not** enable AI review in v1.0.
+`--all` enables secrets, IaC, dependencies, SAST, container (when configured), and license scanning. It does **not** enable AI review — `--ai` / `scanners.ai.enabled` are rejected in this release (planned feature).
 
 ## Selecting Scanners
 
@@ -77,7 +77,7 @@ All configured gates are evaluated independently — a single secret or policy v
 ```bash
 sentinelflow policy list                    # List built-in policies
 sentinelflow policy validate policies/*.rego
-sentinelflow policy test policies/my.rego --input fixtures/input.json
+sentinelflow policy test policies/my.rego test/fixtures/policy/k8s-privileged-pod.json
 sentinelflow policy generate my-custom-rule
 ```
 

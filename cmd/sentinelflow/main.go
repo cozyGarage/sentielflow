@@ -1,4 +1,4 @@
-// SentinelFlow - AI-Driven CI/CD Security Gatekeeper
+// SentinelFlow - CI/CD Security Gatekeeper
 // Main entry point for the CLI application
 
 package main

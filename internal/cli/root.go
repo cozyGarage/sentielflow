@@ -26,7 +26,7 @@ var (
 // rootCmd represents the base command
 var rootCmd = &cobra.Command{
 	Use:   "sentinelflow",
-	Short: "AI-Driven CI/CD Security Gatekeeper",
+	Short: "CI/CD Security Gatekeeper",
 	Long: `SentinelFlow is a comprehensive security scanning tool that integrates
 with CI/CD pipelines to automatically detect security vulnerabilities,
 leaked secrets, insecure configurations, and more.
@@ -35,9 +35,10 @@ Features:
   • Secret scanning (API keys, tokens, credentials)
   • Infrastructure-as-Code scanning (Terraform, K8s, Docker)
   • Dependency vulnerability analysis
-  • AI-powered code security review
   • Policy-as-code enforcement
-  • Automated security reports`,
+  • Automated security reports
+
+AI-powered code review is planned; --ai / scanners.ai.enabled are rejected in this release.`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		if verbose {
 			fmt.Println(color.CyanString("🛡️  SentinelFlow - Security Scanner"))
@@ -158,7 +159,6 @@ scanners:
       - terraform
       - kubernetes
       - dockerfile
-      - cloudformation
     severity: medium
   
   dependencies:
@@ -168,8 +168,9 @@ scanners:
     severity: medium
     ignore_dev: false
   
+  # AI review is planned; leave enabled false (rejected if true).
   ai:
-    enabled: false  # Requires API key configuration
+    enabled: false
     provider: openai
     model: gpt-4
     focus:

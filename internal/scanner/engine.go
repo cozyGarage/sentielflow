@@ -175,7 +175,8 @@ func (e *Engine) collectFiles(ctx context.Context, targetPath string) ([]string,
 			name := d.Name()
 			if name == ".git" || name == "node_modules" || name == "vendor" ||
 				name == ".terraform" || name == "__pycache__" || name == ".venv" ||
-				name == "dist" || name == "build" || name == ".cache" {
+				name == "dist" || name == "build" || name == ".cache" ||
+				name == "testdata" || name == "fixtures" {
 				return filepath.SkipDir
 			}
 			return nil

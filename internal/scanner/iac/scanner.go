@@ -55,10 +55,6 @@ func (s *Scanner) Supports(path string) bool {
 		return s.frameworkEnabled("dockerfile")
 	}
 
-	if ext == ".json" && strings.Contains(strings.ToLower(path), "cloudformation") {
-		return s.frameworkEnabled("cloudformation")
-	}
-
 	return false
 }
 
@@ -168,7 +164,7 @@ func (s *Scanner) collectIaCFiles(dir string) ([]string, error) {
 			name := info.Name()
 			if name == ".git" || name == "node_modules" || name == "vendor" ||
 				name == ".terraform" || name == "__pycache__" || name == ".venv" ||
-				name == "dist" || name == "build" {
+				name == "dist" || name == "build" || name == "testdata" || name == "fixtures" {
 				return filepath.SkipDir
 			}
 			return nil

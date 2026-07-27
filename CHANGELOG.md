@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Shared `test/fixtures/` corpus for secrets, IaC, dependencies, and policy inputs (wired into unit tests)
 - Python dependency parsing for `pyproject.toml`, `poetry.lock`, and `Pipfile.lock` (in addition to `requirements.txt`)
 - Maven `pom.xml` dependency parsing with basic property resolution
 - Cargo `Cargo.lock` / `Cargo.toml` dependency parsing
@@ -16,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Unified AI rejection messaging for `--ai` / `scanners.ai.enabled`; CLI branding no longer advertises AI as shipped
+- Default IaC frameworks are terraform, kubernetes, and dockerfile only (CloudFormation documented as planned)
 - Engine shares collected files with secrets/SAST/IaC scanners (avoid re-walking trees)
 - File scanners use fixed worker pools instead of unbounded goroutine-per-file fanout
 - Shared `internal/scanner/types` contracts reduce adapter boilerplate
@@ -23,6 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Repo self-scan skips `test/fixtures` samples; ignore OPA-indirect OTEL advisory until upstream bumps
+- Policy CLI docs use positional `policy test [policy] [input-file]` (not `--input`)
+- Action baseline description points at `.sentinelflow/baseline.yaml`
 - Secrets placeholder filtering checks the captured value (not keyword-bearing full matches) and avoids over-matching on words like "password"/"secret"
 - IaC scanner honors `frameworks`, `skip_rules`, and minimum `severity`
 - Terraform S3/SG checks are per-resource and detect multi-line security group ingress

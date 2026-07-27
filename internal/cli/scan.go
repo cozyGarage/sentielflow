@@ -64,7 +64,7 @@ func init() {
 	scanCmd.Flags().BoolVar(&scanLicense, "license", false, "check dependency licenses")
 	scanCmd.Flags().StringVar(&containerImage, "container-image", "", "container image to scan")
 	scanCmd.Flags().BoolVar(&useBaseline, "baseline", false, "apply baseline filtering")
-	scanCmd.Flags().BoolVar(&scanAI, "ai", false, "AI-powered code review (not available in v1.0)")
+	scanCmd.Flags().BoolVar(&scanAI, "ai", false, "AI-powered code review (not available in this release)")
 	scanCmd.Flags().BoolVar(&scanAll, "all", false, "enable all scanners")
 	scanCmd.Flags().StringVarP(&outputFile, "output", "o", "", "output file path")
 	scanCmd.Flags().StringVar(&failOnSeverity, "fail-on", "", "fail if findings match severity (critical, high, medium, low)")
@@ -172,7 +172,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 func applyScanFlags(cfg *config.Config) error {
 	if scanAI {
-		return fmt.Errorf("AI-powered code review is not available in v1.0; omit --ai or set scanners.ai.enabled: false")
+		return fmt.Errorf("%s", config.AINotAvailableMessage)
 	}
 
 	if scanAll {

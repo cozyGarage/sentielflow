@@ -122,10 +122,10 @@ Embedded in the binary; project `.rego` files with the same name override.
 
 ```bash
 sentinelflow policy validate policies/my.rego
-sentinelflow policy test policies/my.rego --input input.json
+sentinelflow policy test policies/my.rego test/fixtures/policy/k8s-privileged-pod.json
 ```
 
-See [Policy Authoring](policies.md) for Rego examples.
+See [Policy Authoring](policies.md) for Rego examples. Sample inputs live under `test/fixtures/`.
 
 ---
 
@@ -135,6 +135,7 @@ Generates CycloneDX JSON from the project dependency tree via `sentinelflow sbom
 
 ---
 
-## Planned (not in v1.0)
+## Planned (not in this release)
 
-- **AI code review** — Config and `--ai` flag exist; scanner not registered yet.
+- **AI code review** — Config and `--ai` flag exist for forward compatibility; enabling them is rejected until the scanner ships.
+- **CloudFormation** — Not scanned yet; omit from `scanners.iac.frameworks` (defaults are terraform, kubernetes, dockerfile only).
