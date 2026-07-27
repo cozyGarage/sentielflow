@@ -229,7 +229,6 @@ func parseTerraformAttributes(body string) map[string]interface{} {
 
 	// Parse nested blocks first so top-level attrs remain accurate.
 	blockMatches := tfBlockPattern.FindAllStringSubmatchIndex(body, -1)
-	consumed := make([][2]int, 0, len(blockMatches))
 	for _, loc := range blockMatches {
 		name := body[loc[2]:loc[3]]
 		// Skip attribute-looking lines that also matched (rare); blocks have `{` after name.
@@ -239,11 +238,6 @@ func parseTerraformAttributes(body string) map[string]interface{} {
 		}
 		absOpen := loc[0] + openIdx
 		blockBody := extractBalancedBlock(body, absOpen, len(body))
-		end := absOpen + len(blockBody) + 2 // `{` + body + `}`
-		if end > len(body) {
-			end = len(body)
-		}
-		consumed = append(consumed, [2]int{loc[0], end})
 
 		nested := parseTerraformAttributes(blockBody)
 		if existing, ok := attrs[name]; ok {
@@ -274,8 +268,7 @@ func parseTerraformAttributes(body string) map[string]interface{} {
 
 		key := match[1]
 		raw := strings.TrimSpace(match[2])
-		// Skip attrs that sit inside already-consumed nested blocks by checking approximate
-		// presence only when key already set as nested map/list from blocks.
+		// Nested blocks already occupy this key as a map/list.
 		if _, exists := attrs[key]; exists {
 			if _, isMap := attrs[key].(map[string]interface{}); isMap {
 				continue
