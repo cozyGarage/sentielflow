@@ -114,7 +114,11 @@ type trivyReport struct {
 }
 
 func (s *Scanner) runTrivy(ctx context.Context, image string) ([]api.Finding, error) {
-	cmd := exec.CommandContext(ctx, "trivy", "image", "--format", "json", "--quiet", image)
+	if err := validateImageRef(image); err != nil {
+		return nil, err
+	}
+
+	cmd := exec.CommandContext(ctx, "trivy", "image", "--format", "json", "--quiet", "--", image)
 	output, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok && len(exitErr.Stderr) > 0 {
@@ -168,6 +172,20 @@ func (s *Scanner) runTrivy(ctx context.Context, image string) ([]api.Finding, er
 	}
 
 	return findings, nil
+}
+
+func validateImageRef(image string) error {
+	image = strings.TrimSpace(image)
+	if image == "" {
+		return fmt.Errorf("container image reference is empty")
+	}
+	if strings.HasPrefix(image, "-") {
+		return fmt.Errorf("invalid container image reference %q: must not start with '-'", image)
+	}
+	if strings.ContainsAny(image, " \t\n\r") {
+		return fmt.Errorf("invalid container image reference %q: contains whitespace", image)
+	}
+	return nil
 }
 
 func parseSeverity(s string) api.Severity {

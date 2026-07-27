@@ -24,6 +24,15 @@ COPY . /app
 	}
 }
 
+func TestValidateImageRef(t *testing.T) {
+	if err := validateImageRef("-o /tmp/out"); err == nil {
+		t.Fatal("expected option-like image refs to be rejected")
+	}
+	if err := validateImageRef("nginx:1.25"); err != nil {
+		t.Fatalf("unexpected rejection: %v", err)
+	}
+}
+
 func TestScanSkipsWithoutTrivy(t *testing.T) {
 	if IsTrivyAvailable() {
 		t.Skip("trivy is installed, skipping skip test")

@@ -192,7 +192,8 @@ func (s *DockerfileScanner) loadRules() []*DockerfileRule {
 			Check: func(lines []string, lineNum int, line string) bool {
 				if strings.Contains(line, "apt-get "+"install") || strings.Contains(line, "apt "+"install") {
 					// Check if there's a cleanup in the same RUN
-					return !strings.Contains(line, "rm -rf "+" /var/lib/apt/lists")
+					return !strings.Contains(line, "rm -rf /var/lib/apt/lists") &&
+						!strings.Contains(line, "rm -rf  /var/lib/apt/lists")
 				}
 				return false
 			},

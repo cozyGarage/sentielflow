@@ -2,7 +2,9 @@
 package config
 
 import (
+	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
@@ -238,6 +240,43 @@ func (c *Config) Save(path string) error {
 
 // Validate checks if the configuration is valid
 func (c *Config) Validate() error {
-	// Add validation logic here
+	validSeverities := map[string]bool{
+		"": true, "critical": true, "high": true, "medium": true, "low": true, "info": true,
+	}
+	validFormats := map[string]bool{
+		"": true, "text": true, "json": true, "sarif": true, "markdown": true, "html": true,
+	}
+
+	if !validSeverities[strings.ToLower(c.FailOn.Severity)] {
+		return fmt.Errorf("invalid fail_on.severity %q (expected critical, high, medium, low, or info)", c.FailOn.Severity)
+	}
+	if !validSeverities[strings.ToLower(c.Scanners.IaC.Severity)] {
+		return fmt.Errorf("invalid scanners.iac.severity %q", c.Scanners.IaC.Severity)
+	}
+	if !validSeverities[strings.ToLower(c.Scanners.Dependencies.Severity)] {
+		return fmt.Errorf("invalid scanners.dependencies.severity %q", c.Scanners.Dependencies.Severity)
+	}
+	if !validSeverities[strings.ToLower(c.Scanners.SAST.Severity)] {
+		return fmt.Errorf("invalid scanners.sast.severity %q", c.Scanners.SAST.Severity)
+	}
+	if !validSeverities[strings.ToLower(c.Scanners.Container.Severity)] {
+		return fmt.Errorf("invalid scanners.container.severity %q", c.Scanners.Container.Severity)
+	}
+	if !validFormats[strings.ToLower(c.Reporting.Format)] {
+		return fmt.Errorf("invalid reporting.format %q (expected text, json, sarif, markdown, or html)", c.Reporting.Format)
+	}
+	if c.Scanners.Secrets.EntropyThreshold < 0 {
+		return fmt.Errorf("scanners.secrets.entropy_threshold must be >= 0")
+	}
+	if c.Scanners.Secrets.MaxHistoryDepth < 0 {
+		return fmt.Errorf("scanners.secrets.max_history_depth must be >= 0")
+	}
+	if c.Git.HistoryDepth < 0 {
+		return fmt.Errorf("git.history_depth must be >= 0")
+	}
+	if c.Scanners.AI.Enabled {
+		return fmt.Errorf("scanners.ai.enabled is not supported in v1.0")
+	}
+
 	return nil
 }

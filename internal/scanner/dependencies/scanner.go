@@ -114,6 +114,7 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 
 	var wg sync.WaitGroup
 	var mu sync.Mutex
+	var scanErrs []string
 
 	for name, ecosys := range ecosystemsFound {
 		wg.Add(1)
@@ -122,6 +123,9 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 
 			deps, err := eco.Scan(ctx, path)
 			if err != nil {
+				mu.Lock()
+				scanErrs = append(scanErrs, fmt.Sprintf("%s: %v", ecoName, err))
+				mu.Unlock()
 				return
 			}
 
@@ -132,6 +136,9 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 
 				vulns, err := s.checkVulnerabilities(ctx, dep)
 				if err != nil {
+					mu.Lock()
+					scanErrs = append(scanErrs, fmt.Sprintf("%s/%s@%s: %v", dep.Ecosystem, dep.Name, dep.Version, err))
+					mu.Unlock()
 					continue
 				}
 
@@ -155,6 +162,9 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 	wg.Wait()
 
 	result.FilesCount = len(ecosystemsFound)
+	if len(scanErrs) > 0 {
+		return result, fmt.Errorf("dependency scan errors: %s", strings.Join(scanErrs, "; "))
+	}
 	return result, nil
 }
 
@@ -351,8 +361,24 @@ func (g *GoModScanner) Scan(ctx context.Context, path string) ([]Dependency, err
 	inRequire := false
 	for lineNum, line := range lines {
 		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "//") {
+			continue
+		}
 
 		if strings.HasPrefix(trimmed, "require") {
+			parts := strings.Fields(trimmed)
+			// Single-line: require module version [// indirect]
+			if len(parts) >= 3 && parts[0] == "require" && parts[1] != "(" {
+				deps = append(deps, Dependency{
+					Name:      parts[1],
+					Version:   parts[2],
+					Ecosystem: "go",
+					FilePath:  goModPath,
+					Line:      lineNum + 1,
+				})
+				continue
+			}
+			// Multi-line: require (
 			inRequire = true
 			continue
 		}
@@ -362,7 +388,7 @@ func (g *GoModScanner) Scan(ctx context.Context, path string) ([]Dependency, err
 			continue
 		}
 
-		if inRequire || strings.HasPrefix(trimmed, "require ") {
+		if inRequire {
 			parts := strings.Fields(trimmed)
 			if len(parts) >= 2 {
 				deps = append(deps, Dependency{

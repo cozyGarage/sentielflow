@@ -3,6 +3,7 @@ package policy
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -97,6 +98,27 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 
 func (s *Scanner) loadPolicyFiles(engine *OPAEngine, scanRoot string) error {
 	seen := make(map[string]bool)
+	var loadErrs []string
+
+	loadFile := func(path string) {
+		if !strings.HasSuffix(path, ".rego") || seen[path] {
+			return
+		}
+		seen[path] = true
+
+		content, err := os.ReadFile(path)
+		if err != nil {
+			loadErrs = append(loadErrs, fmt.Sprintf("%s: %v", path, err))
+			return
+		}
+
+		name := strings.TrimSuffix(filepath.Base(path), ".rego")
+		if err := engine.LoadPolicy(name, string(content)); err != nil {
+			loadErrs = append(loadErrs, fmt.Sprintf("%s: %v", path, err))
+			return
+		}
+		s.severities[name] = parseSeverityFromRego(string(content))
+	}
 
 	loadDir := func(dir string) {
 		if dir == "" {
@@ -106,55 +128,38 @@ func (s *Scanner) loadPolicyFiles(engine *OPAEngine, scanRoot string) error {
 			return
 		}
 		_ = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-			if err != nil || info.IsDir() || !strings.HasSuffix(path, ".rego") {
+			if err != nil || info.IsDir() {
 				return err
 			}
-			if seen[path] {
-				return nil
-			}
-			seen[path] = true
-
-			content, err := os.ReadFile(path)
-			if err != nil {
-				return nil
-			}
-
-			name := strings.TrimSuffix(filepath.Base(path), ".rego")
-			if err := engine.LoadPolicy(name, string(content)); err != nil {
-				return nil
-			}
-			s.severities[name] = parseSeverityFromRego(string(content))
+			loadFile(path)
 			return nil
 		})
 	}
 
 	loadDir(filepath.Join(scanRoot, "policies"))
+	loadDir(filepath.Join(scanRoot, ".sentinelflow", "policies"))
 	loadDir("policies")
 
 	for _, pattern := range s.config.Policies.Files {
-		matches, err := filepath.Glob(pattern)
-		if err != nil {
-			continue
+		patterns := []string{pattern}
+		if !filepath.IsAbs(pattern) {
+			patterns = append(patterns, filepath.Join(scanRoot, pattern))
 		}
-		for _, path := range matches {
-			if !strings.HasSuffix(path, ".rego") || seen[path] {
-				continue
-			}
-			seen[path] = true
-
-			content, err := os.ReadFile(path)
+		for _, p := range patterns {
+			matches, err := filepath.Glob(p)
 			if err != nil {
+				loadErrs = append(loadErrs, fmt.Sprintf("glob %s: %v", p, err))
 				continue
 			}
-
-			name := strings.TrimSuffix(filepath.Base(path), ".rego")
-			if err := engine.LoadPolicy(name, string(content)); err != nil {
-				continue
+			for _, path := range matches {
+				loadFile(path)
 			}
-			s.severities[name] = parseSeverityFromRego(string(content))
 		}
 	}
 
+	if len(loadErrs) > 0 && engine.PolicyCount() == 0 {
+		return fmt.Errorf("failed to load policies: %s", strings.Join(loadErrs, "; "))
+	}
 	return nil
 }
 

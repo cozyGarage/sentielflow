@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/cozygarage/sentinelflow/internal/config"
@@ -63,5 +65,24 @@ func TestCheckVulnerabilitiesUsesOSV(t *testing.T) {
 	}
 	if vulns[0].ID != "OSV-TEST-1" {
 		t.Fatalf("unexpected vuln id %s", vulns[0].ID)
+	}
+}
+
+func TestGoModScannerParsesSingleLineRequire(t *testing.T) {
+	tmp := t.TempDir()
+	content := "module example.com/demo\n\ngo 1.22\n\nrequire github.com/foo/bar v1.2.3\n"
+	if err := os.WriteFile(filepath.Join(tmp, "go.mod"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	deps, err := (&GoModScanner{}).Scan(context.Background(), tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(deps) != 1 {
+		t.Fatalf("expected 1 dependency, got %d", len(deps))
+	}
+	if deps[0].Name != "github.com/foo/bar" || deps[0].Version != "v1.2.3" {
+		t.Fatalf("unexpected dependency: %+v", deps[0])
 	}
 }

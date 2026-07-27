@@ -11,7 +11,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const hookMarker = "# sentinelflow-pre-commit-hook"
+const (
+	hookMarker      = "# sentinelflow-pre-commit-hook"
+	hookBeginMarker = "# >>> sentinelflow-pre-commit-hook"
+	hookEndMarker   = "# <<< sentinelflow-pre-commit-hook"
+)
 
 var hookCmd = &cobra.Command{
 	Use:   "hook",
@@ -34,23 +38,35 @@ var hookInstallCmd = &cobra.Command{
 			return fmt.Errorf("failed to resolve executable: %w", err)
 		}
 
-		hookContent := fmt.Sprintf(`#!/bin/sh
+		block := fmt.Sprintf(`%s
 %s
 exec "%s" scan --secrets --iac --fail-on high
-`, hookMarker, exe)
+%s
+`, hookBeginMarker, hookMarker, exe, hookEndMarker)
 
 		if err := os.MkdirAll(filepath.Dir(hookPath), 0755); err != nil {
 			return fmt.Errorf("failed to create hooks directory: %w", err)
 		}
 
+		existing := ""
 		if data, err := os.ReadFile(hookPath); err == nil {
-			if containsMarker(string(data)) {
+			existing = string(data)
+			if containsMarker(existing) {
 				fmt.Println(color.YellowString("Pre-commit hook already installed"))
 				return nil
 			}
+		} else if !os.IsNotExist(err) {
+			return fmt.Errorf("failed to read existing hook: %w", err)
 		}
 
-		if err := os.WriteFile(hookPath, []byte(hookContent), 0755); err != nil {
+		var content string
+		if existing == "" {
+			content = "#!/bin/sh\n" + block
+		} else {
+			content = strings.TrimRight(existing, "\n") + "\n\n" + block
+		}
+
+		if err := os.WriteFile(hookPath, []byte(content), 0755); err != nil {
 			return fmt.Errorf("failed to write hook: %w", err)
 		}
 
@@ -78,16 +94,29 @@ var hookUninstallCmd = &cobra.Command{
 			return fmt.Errorf("failed to read hook: %w", err)
 		}
 
-		if !containsMarker(string(data)) {
+		content := string(data)
+		if !containsMarker(content) {
 			fmt.Println(color.YellowString("Pre-commit hook was not installed by SentinelFlow"))
 			return nil
 		}
 
-		if err := os.Remove(hookPath); err != nil {
-			return fmt.Errorf("failed to remove hook: %w", err)
+		updated, removed := removeHookBlock(content)
+		if !removed {
+			return fmt.Errorf("failed to locate SentinelFlow hook block for removal")
 		}
 
-		fmt.Printf("%s Removed pre-commit hook from %s\n", color.GreenString("✓"), hookPath)
+		trimmed := strings.TrimSpace(updated)
+		if trimmed == "" || trimmed == "#!/bin/sh" || trimmed == "#!/bin/bash" {
+			if err := os.Remove(hookPath); err != nil {
+				return fmt.Errorf("failed to remove hook: %w", err)
+			}
+		} else {
+			if err := os.WriteFile(hookPath, []byte(updated), 0755); err != nil {
+				return fmt.Errorf("failed to update hook: %w", err)
+			}
+		}
+
+		fmt.Printf("%s Removed SentinelFlow pre-commit hook from %s\n", color.GreenString("✓"), hookPath)
 		return nil
 	},
 }
@@ -102,16 +131,36 @@ func findGitDir() (string, error) {
 }
 
 func containsMarker(content string) bool {
-	return len(content) > 0 && (content == hookMarker || len(content) > len(hookMarker) && content[:len(hookMarker)] == hookMarker || containsSubstring(content, hookMarker))
+	return strings.Contains(content, hookMarker) || strings.Contains(content, hookBeginMarker)
 }
 
-func containsSubstring(s, sub string) bool {
-	for i := 0; i <= len(s)-len(sub); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
+func removeHookBlock(content string) (string, bool) {
+	if begin := strings.Index(content, hookBeginMarker); begin >= 0 {
+		end := strings.Index(content[begin:], hookEndMarker)
+		if end >= 0 {
+			end = begin + end + len(hookEndMarker)
+			for end < len(content) && (content[end] == '\n' || content[end] == '\r') {
+				end++
+			}
+			return content[:begin] + content[end:], true
 		}
 	}
-	return false
+
+	// Legacy single-marker format: remove marker line and following exec line if present
+	lines := strings.Split(content, "\n")
+	var out []string
+	removed := false
+	for i := 0; i < len(lines); i++ {
+		if strings.Contains(lines[i], hookMarker) {
+			removed = true
+			if i+1 < len(lines) && strings.Contains(lines[i+1], "sentinelflow") && strings.Contains(lines[i+1], "scan") {
+				i++
+			}
+			continue
+		}
+		out = append(out, lines[i])
+	}
+	return strings.Join(out, "\n"), removed
 }
 
 func init() {

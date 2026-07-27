@@ -138,6 +138,11 @@ func (e *OPAEngine) ListPolicies() []string {
 	return names
 }
 
+// PolicyCount returns the number of loaded policies.
+func (e *OPAEngine) PolicyCount() int {
+	return len(e.policies)
+}
+
 // PolicyResult contains the result of policy evaluation
 type PolicyResult struct {
 	PolicyName string
