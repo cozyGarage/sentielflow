@@ -710,7 +710,7 @@ func (s *Scanner) loadCustomPatterns() []*SecretPattern {
 				ID:          entry.ID,
 				Name:        entry.Name,
 				Pattern:     re,
-				Severity:    parseSeverity(entry.Severity),
+				Severity:    api.ParseSeverity(entry.Severity),
 				Description: entry.Description,
 			})
 		}
@@ -732,19 +732,4 @@ func (s *Scanner) loadCustomPatterns() []*SecretPattern {
 	}
 
 	return patterns
-}
-
-func parseSeverity(s string) api.Severity {
-	switch strings.ToLower(s) {
-	case "critical":
-		return api.SeverityCritical
-	case "high":
-		return api.SeverityHigh
-	case "medium":
-		return api.SeverityMedium
-	case "low":
-		return api.SeverityLow
-	default:
-		return api.SeverityHigh
-	}
 }

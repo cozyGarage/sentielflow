@@ -26,7 +26,7 @@ func (f *MarkdownFormatter) Format(result *api.ScanResult) (string, error) {
 	md.WriteString("| Metric | Value |\n")
 	md.WriteString("|--------|-------|\n")
 	md.WriteString(fmt.Sprintf("| **Target** | `%s` |\n", escapeMarkdownInline(result.Metadata.TargetPath)))
-	md.WriteString(fmt.Sprintf("| **Scan Duration** | %s |\n", result.Duration.Round(time.Millisecond)))
+	md.WriteString(fmt.Sprintf("| **Scan Duration** | %s |\n", result.Duration.Std().Round(time.Millisecond)))
 	md.WriteString(fmt.Sprintf("| **Scanners Run** | %d |\n", len(result.ScannerRuns)))
 	md.WriteString(fmt.Sprintf("| **Total Findings** | **%d** |\n", totalFindings))
 	md.WriteString("\n")
@@ -61,7 +61,7 @@ func (f *MarkdownFormatter) Format(result *api.ScanResult) (string, error) {
 			status = "❌"
 		}
 		md.WriteString(fmt.Sprintf("| %s | %s | %d | %s |\n",
-			escapeMarkdownCell(run.Scanner), status, run.FindingsCount, run.Duration.Round(time.Millisecond)))
+			escapeMarkdownCell(run.Scanner), status, run.FindingsCount, run.Duration.Std().Round(time.Millisecond)))
 	}
 	md.WriteString("\n")
 

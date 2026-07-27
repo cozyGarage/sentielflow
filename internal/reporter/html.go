@@ -69,7 +69,7 @@ func (f *HTMLFormatter) Format(result *api.ScanResult) (string, error) {
             <h1>🛡️ SentinelFlow Security Report</h1>
             <p>Target: %s | Duration: %s</p>
         </div>
-`, html.EscapeString(result.Metadata.TargetPath), result.Duration.Round(time.Millisecond)))
+`, html.EscapeString(result.Metadata.TargetPath), result.Duration.Std().Round(time.Millisecond)))
 
 	// Summary cards
 	counts := result.CountBySeverity()

@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Policy `generate` rejects path traversal; hook install appends instead of overwriting
 - Markdown reports escape untrusted finding content for safer PR comments
 - Trivy image refs are validated; APT cleanup Dockerfile check no longer requires a double space
+- Built-in Rego policies are embedded and loaded via `policies.builtin`
+- Policy input supports multi-document Kubernetes YAML and richer Terraform attributes/refs
+- JSON reports encode durations as `duration_ms` (milliseconds) with shared severity helpers
 
 ## [1.0.0] - 2026-07-12
 

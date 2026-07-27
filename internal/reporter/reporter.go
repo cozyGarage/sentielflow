@@ -58,7 +58,7 @@ func (f *TextFormatter) Format(result *api.ScanResult) (string, error) {
 
 	output += fmt.Sprintf("Target:   %s\n", result.Metadata.TargetPath)
 	output += fmt.Sprintf("Started:  %s\n", result.Metadata.StartTime.Format("2006-01-02 15:04:05"))
-	output += fmt.Sprintf("Duration: %s\n", result.Duration)
+	output += fmt.Sprintf("Duration: %s\n", result.Duration.Std())
 	output += fmt.Sprintf("Scanners: %d\n\n", len(result.ScannerRuns))
 
 	// Summary by severity
@@ -79,7 +79,7 @@ func (f *TextFormatter) Format(result *api.ScanResult) (string, error) {
 			status = "✗"
 		}
 		output += fmt.Sprintf("  %s %s - %d findings in %s\n",
-			status, run.Scanner, run.FindingsCount, run.Duration)
+			status, run.Scanner, run.FindingsCount, run.Duration.Std())
 	}
 
 	if len(result.Findings) > 0 {

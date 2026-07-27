@@ -10,6 +10,7 @@ import (
 
 	"github.com/cozygarage/sentinelflow/internal/config"
 	"github.com/cozygarage/sentinelflow/pkg/api"
+	"github.com/cozygarage/sentinelflow/policies"
 )
 
 // Scanner implements policy-as-code scanning using OPA
@@ -97,14 +98,27 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 }
 
 func (s *Scanner) loadPolicyFiles(engine *OPAEngine, scanRoot string) error {
-	seen := make(map[string]bool)
+	seenNames := make(map[string]bool)
+	seenPaths := make(map[string]bool)
 	var loadErrs []string
 
-	loadFile := func(path string) {
-		if !strings.HasSuffix(path, ".rego") || seen[path] {
+	loadContent := func(name, content, source string, overwrite bool) {
+		if seenNames[name] && !overwrite {
 			return
 		}
-		seen[path] = true
+		if err := engine.LoadPolicy(name, content); err != nil {
+			loadErrs = append(loadErrs, fmt.Sprintf("%s: %v", source, err))
+			return
+		}
+		seenNames[name] = true
+		s.severities[name] = parseSeverityFromRego(content)
+	}
+
+	loadFile := func(path string, overwrite bool) {
+		if !strings.HasSuffix(path, ".rego") || seenPaths[path] {
+			return
+		}
+		seenPaths[path] = true
 
 		content, err := os.ReadFile(path)
 		if err != nil {
@@ -113,11 +127,18 @@ func (s *Scanner) loadPolicyFiles(engine *OPAEngine, scanRoot string) error {
 		}
 
 		name := strings.TrimSuffix(filepath.Base(path), ".rego")
-		if err := engine.LoadPolicy(name, string(content)); err != nil {
-			loadErrs = append(loadErrs, fmt.Sprintf("%s: %v", path, err))
-			return
+		loadContent(name, string(content), path, overwrite)
+	}
+
+	// Built-ins first; project/custom files may override by name.
+	if len(s.config.Policies.Builtin) > 0 {
+		selected, err := policies.LoadSelected(s.config.Policies.Builtin)
+		if err != nil {
+			return fmt.Errorf("built-in policies: %w", err)
 		}
-		s.severities[name] = parseSeverityFromRego(string(content))
+		for name, content := range selected {
+			loadContent(name, content, "builtin:"+name, false)
+		}
 	}
 
 	loadDir := func(dir string) {
@@ -131,18 +152,19 @@ func (s *Scanner) loadPolicyFiles(engine *OPAEngine, scanRoot string) error {
 			if err != nil || info.IsDir() {
 				return err
 			}
-			loadFile(path)
+			loadFile(path, true)
 			return nil
 		})
 	}
 
 	loadDir(filepath.Join(scanRoot, "policies"))
 	loadDir(filepath.Join(scanRoot, ".sentinelflow", "policies"))
-	loadDir("policies")
 
 	for _, pattern := range s.config.Policies.Files {
-		patterns := []string{pattern}
-		if !filepath.IsAbs(pattern) {
+		patterns := []string{}
+		if filepath.IsAbs(pattern) {
+			patterns = append(patterns, pattern)
+		} else {
 			patterns = append(patterns, filepath.Join(scanRoot, pattern))
 		}
 		for _, p := range patterns {
@@ -152,7 +174,7 @@ func (s *Scanner) loadPolicyFiles(engine *OPAEngine, scanRoot string) error {
 				continue
 			}
 			for _, path := range matches {
-				loadFile(path)
+				loadFile(path, true)
 			}
 		}
 	}
@@ -168,26 +190,11 @@ func parseSeverityFromRego(content string) api.Severity {
 		if strings.Contains(line, "# severity:") {
 			parts := strings.SplitN(line, "severity:", 2)
 			if len(parts) == 2 {
-				return parseSeverity(strings.TrimSpace(parts[1]))
+				return api.ParseSeverity(strings.TrimSpace(parts[1]))
 			}
 		}
 	}
 	return api.SeverityMedium
-}
-
-func parseSeverity(str string) api.Severity {
-	switch strings.ToLower(str) {
-	case "critical":
-		return api.SeverityCritical
-	case "high":
-		return api.SeverityHigh
-	case "medium":
-		return api.SeverityMedium
-	case "low":
-		return api.SeverityLow
-	default:
-		return api.SeverityInfo
-	}
 }
 
 func (s *Scanner) severityFor(name string) api.Severity {

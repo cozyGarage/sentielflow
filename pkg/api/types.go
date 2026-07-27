@@ -2,6 +2,8 @@
 package api
 
 import (
+	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -15,6 +17,50 @@ const (
 	SeverityLow      Severity = "low"
 	SeverityInfo     Severity = "info"
 )
+
+// ParseSeverity converts a severity string into a Severity value.
+// Unknown values map to SeverityInfo.
+func ParseSeverity(s string) Severity {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "critical":
+		return SeverityCritical
+	case "high":
+		return SeverityHigh
+	case "medium", "moderate":
+		return SeverityMedium
+	case "low":
+		return SeverityLow
+	case "info", "informational", "unknown", "":
+		return SeverityInfo
+	default:
+		return SeverityInfo
+	}
+}
+
+// Rank returns a comparable severity rank (critical highest).
+func (s Severity) Rank() int {
+	switch ParseSeverity(string(s)) {
+	case SeverityCritical:
+		return 4
+	case SeverityHigh:
+		return 3
+	case SeverityMedium:
+		return 2
+	case SeverityLow:
+		return 1
+	default:
+		return 0
+	}
+}
+
+// MeetsMinimum reports whether found is at least as severe as minimum.
+func MeetsMinimum(found Severity, minimum string) bool {
+	min := ParseSeverity(minimum)
+	if minimum == "" {
+		min = SeverityMedium
+	}
+	return found.Rank() >= min.Rank()
+}
 
 // FindingType represents the category of a security finding
 type FindingType string
@@ -56,23 +102,46 @@ type Finding struct {
 	CWE         []string       `json:"cwe,omitempty"`
 }
 
+// DurationMS is a time.Duration that JSON-encodes as milliseconds.
+type DurationMS time.Duration
+
+// MarshalJSON encodes the duration as an integer number of milliseconds.
+func (d DurationMS) MarshalJSON() ([]byte, error) {
+	return json.Marshal(time.Duration(d).Milliseconds())
+}
+
+// UnmarshalJSON decodes milliseconds into a duration.
+func (d *DurationMS) UnmarshalJSON(data []byte) error {
+	var ms int64
+	if err := json.Unmarshal(data, &ms); err != nil {
+		return err
+	}
+	*d = DurationMS(time.Duration(ms) * time.Millisecond)
+	return nil
+}
+
+// Std returns the underlying time.Duration.
+func (d DurationMS) Std() time.Duration {
+	return time.Duration(d)
+}
+
 // ScanResult contains the complete results of a security scan
 type ScanResult struct {
 	Findings    []Finding     `json:"findings"`
 	ScannerRuns []ScannerRun  `json:"scanner_runs"`
 	Metadata    ScanMetadata  `json:"metadata"`
-	Duration    time.Duration `json:"duration"`
+	Duration    DurationMS    `json:"duration_ms"`
 }
 
 // ScannerRun contains information about an individual scanner execution
 type ScannerRun struct {
-	Scanner       string        `json:"scanner"`
-	StartTime     time.Time     `json:"start_time"`
-	EndTime       time.Time     `json:"end_time"`
-	Duration      time.Duration `json:"duration"`
-	FilesCount    int           `json:"files_count"`
-	FindingsCount int           `json:"findings_count"`
-	Error         string        `json:"error,omitempty"`
+	Scanner       string     `json:"scanner"`
+	StartTime     time.Time  `json:"start_time"`
+	EndTime       time.Time  `json:"end_time"`
+	Duration      DurationMS `json:"duration_ms"`
+	FilesCount    int        `json:"files_count"`
+	FindingsCount int        `json:"findings_count"`
+	Error         string     `json:"error,omitempty"`
 }
 
 // ScanMetadata contains information about the scan environment
