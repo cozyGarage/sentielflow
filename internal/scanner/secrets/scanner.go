@@ -3,6 +3,7 @@ package secrets
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -18,6 +19,7 @@ import (
 	"github.com/cozygarage/sentinelflow/internal/config"
 	"github.com/cozygarage/sentinelflow/internal/scanner/filter"
 	"github.com/cozygarage/sentinelflow/internal/scanner/redact"
+	"github.com/cozygarage/sentinelflow/internal/scanner/types"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 	"gopkg.in/yaml.v3"
 )
@@ -30,12 +32,13 @@ type Scanner struct {
 
 // SecretPattern defines a secret detection pattern
 type SecretPattern struct {
-	ID          string
-	Name        string
-	Pattern     *regexp.Regexp
-	Severity    api.Severity
-	Description string
-	Keywords    []string
+	ID             string
+	Name           string
+	Pattern        *regexp.Regexp
+	Severity       api.Severity
+	Description    string
+	Keywords       []string
+	RequireKeyword bool // when true, at least one keyword must appear before regex runs
 }
 
 // NewScanner creates a new secret scanner
@@ -56,7 +59,6 @@ func (s *Scanner) Name() string {
 // Supports returns true for files that should be scanned for secrets
 func (s *Scanner) Supports(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
-	// Skip binary and image files
 	binaryExts := map[string]bool{
 		".exe": true, ".dll": true, ".so": true, ".dylib": true,
 		".png": true, ".jpg": true, ".jpeg": true, ".gif": true,
@@ -69,10 +71,7 @@ func (s *Scanner) Supports(path string) bool {
 }
 
 // ScannerResult contains scan results
-type ScannerResult struct {
-	Findings   []api.Finding
-	FilesCount int
-}
+type ScannerResult = types.ScannerResult
 
 // Scan performs secret detection on the target path
 func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*ScannerResult, error) {
@@ -80,57 +79,42 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 		Findings: []api.Finding{},
 	}
 
-	var files []string
-
-	// Check if path is a file or directory
-	info, err := os.Stat(path)
+	files, err := types.ResolveFiles(path, opts, s.collectFiles)
 	if err != nil {
 		return nil, err
 	}
 
-	if info.IsDir() {
-		files, err = s.collectFiles(path)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		files = []string{path}
-	}
-
-	result.FilesCount = len(files)
-
-	// Scan files concurrently
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-	semaphore := make(chan struct{}, 10) // Limit concurrency
-
+	var scanFiles []string
 	for _, file := range files {
 		if !s.Supports(file) {
 			continue
 		}
-
-		wg.Add(1)
-		go func(filePath string) {
-			defer wg.Done()
-			semaphore <- struct{}{}
-			defer func() { <-semaphore }()
-
-			findings, err := s.scanFile(ctx, filePath, path)
-			if err != nil {
-				return // Skip files that can't be read
-			}
-
-			if len(findings) > 0 {
-				mu.Lock()
-				result.Findings = append(result.Findings, findings...)
-				mu.Unlock()
-			}
-		}(file)
+		if info, err := os.Stat(file); err == nil && info.Size() > 1*1024*1024 {
+			continue
+		}
+		rel, _ := filepath.Rel(path, file)
+		if rel == "" {
+			rel = file
+		}
+		if filter.ShouldSkip(rel, s.config.Scanners.Secrets.Allowlist) {
+			continue
+		}
+		scanFiles = append(scanFiles, file)
 	}
+	result.FilesCount = len(scanFiles)
 
-	wg.Wait()
+	concurrency := types.EffectiveConcurrency(opts, s.config.Scanners.Secrets.Concurrency, 10)
+	var mu sync.Mutex
+	types.RunWorkers(ctx, concurrency, scanFiles, func(filePath string) {
+		findings, err := s.scanFile(ctx, filePath, path)
+		if err != nil || len(findings) == 0 {
+			return
+		}
+		mu.Lock()
+		result.Findings = append(result.Findings, findings...)
+		mu.Unlock()
+	})
 
-	// Scan git history if enabled
 	if s.shouldScanGitHistory(path) {
 		historyFindings, err := s.scanGitHistory(ctx, path)
 		if err == nil {
@@ -167,20 +151,38 @@ func (s *Scanner) scanReader(ctx context.Context, r io.Reader, filePath, basePat
 
 		lineNum++
 		line := scanner.Text()
+		lineLower := strings.ToLower(line)
 
 		// Check each pattern
 		for _, pattern := range s.patterns {
-			matches := pattern.Pattern.FindAllStringIndex(line, -1)
-			for _, match := range matches {
-				secret := line[match[0]:match[1]]
+			if pattern.RequireKeyword && !containsAnyKeyword(lineLower, pattern.Keywords) {
+				continue
+			}
+			matches := pattern.Pattern.FindAllStringSubmatchIndex(line, -1)
+			for _, loc := range matches {
+				if len(loc) < 2 {
+					continue
+				}
+				start, end := loc[0], loc[1]
+				secret := line[start:end]
+
+				// Prefer the last capture group as the secret value so placeholder
+				// and entropy checks are not skewed by keywords in the full match.
+				secretValue := secret
+				if n := len(loc); n >= 4 {
+					gs, ge := loc[n-2], loc[n-1]
+					if gs >= 0 && ge > gs {
+						secretValue = line[gs:ge]
+					}
+				}
 
 				// Skip if it looks like a placeholder
-				if s.isPlaceholder(secret) {
+				if s.isPlaceholder(secretValue) {
 					continue
 				}
 
 				// Additional entropy check for generic patterns
-				if pattern.ID == "generic-secret" && s.calculateEntropy(secret) < s.config.Scanners.Secrets.EntropyThreshold {
+				if pattern.ID == "generic-secret" && s.calculateEntropy(secretValue) < s.config.Scanners.Secrets.EntropyThreshold {
 					continue
 				}
 
@@ -202,9 +204,9 @@ func (s *Scanner) scanReader(ctx context.Context, r io.Reader, filePath, basePat
 						File:      relPath,
 						StartLine: lineNum,
 						EndLine:   lineNum,
-						StartCol:  match[0] + 1,
-						EndCol:    match[1] + 1,
-						Snippet:   s.maskSecret(line, match[0], match[1]),
+						StartCol:  start + 1,
+						EndCol:    end + 1,
+						Snippet:   s.maskSecret(line, start, end),
 					},
 					Remediation: s.getRemediation(pattern),
 					Scanner:     "secrets",
@@ -238,12 +240,13 @@ func (s *Scanner) loadPatterns() []*SecretPattern {
 			Keywords:    []string{"aws", "access", "key"},
 		},
 		{
-			ID:          "aws-secret-key",
-			Name:        "AWS Secret Access Key",
-			Pattern:     regexp.MustCompile(`(?i)aws[_\-]?secret[_\-]?access[_\-]?key[\s]*[=:]["']?([A-Za-z0-9/+=]{40})["']?`),
-			Severity:    api.SeverityCritical,
-			Description: "AWS Secret Access Key found in code",
-			Keywords:    []string{"aws", "secret"},
+			ID:             "aws-secret-key",
+			Name:           "AWS Secret Access Key",
+			Pattern:        regexp.MustCompile(`(?i)aws[_\-]?secret[_\-]?access[_\-]?key[\s]*[=:]["']?([A-Za-z0-9/+=]{40})["']?`),
+			Severity:       api.SeverityCritical,
+			Description:    "AWS Secret Access Key found in code",
+			Keywords:       []string{"aws"},
+			RequireKeyword: true,
 		},
 		// GCP
 		{
@@ -255,21 +258,23 @@ func (s *Scanner) loadPatterns() []*SecretPattern {
 			Keywords:    []string{"google", "gcp", "api"},
 		},
 		{
-			ID:          "gcp-service-account",
-			Name:        "GCP Service Account",
-			Pattern:     regexp.MustCompile(`"type"\s*:\s*"service_account"`),
-			Severity:    api.SeverityHigh,
-			Description: "GCP Service Account credentials file detected",
-			Keywords:    []string{"google", "service_account"},
+			ID:             "gcp-service-account",
+			Name:           "GCP Service Account",
+			Pattern:        regexp.MustCompile(`"type"\s*:\s*"service_account"`),
+			Severity:       api.SeverityHigh,
+			Description:    "GCP Service Account credentials file detected",
+			Keywords:       []string{"service_account"},
+			RequireKeyword: true,
 		},
 		// Azure
 		{
-			ID:          "azure-storage-key",
-			Name:        "Azure Storage Account Key",
-			Pattern:     regexp.MustCompile(`(?i)AccountKey\s*=\s*([A-Za-z0-9+/=]{88})`),
-			Severity:    api.SeverityCritical,
-			Description: "Azure Storage Account Key found in code",
-			Keywords:    []string{"azure", "storage", "account"},
+			ID:             "azure-storage-key",
+			Name:           "Azure Storage Account Key",
+			Pattern:        regexp.MustCompile(`(?i)AccountKey\s*=\s*([A-Za-z0-9+/=]{88})`),
+			Severity:       api.SeverityCritical,
+			Description:    "Azure Storage Account Key found in code",
+			Keywords:       []string{"accountkey"},
+			RequireKeyword: true,
 		},
 		// GitHub
 		{
@@ -307,12 +312,13 @@ func (s *Scanner) loadPatterns() []*SecretPattern {
 			Keywords:    []string{"slack", "token"},
 		},
 		{
-			ID:          "slack-webhook",
-			Name:        "Slack Webhook URL",
-			Pattern:     regexp.MustCompile(`https://hooks\.slack\.com/services/T[A-Z0-9]+/B[A-Z0-9]+/[A-Za-z0-9]+`),
-			Severity:    api.SeverityMedium,
-			Description: "Slack webhook URL found in code",
-			Keywords:    []string{"slack", "webhook"},
+			ID:             "slack-webhook",
+			Name:           "Slack Webhook URL",
+			Pattern:        regexp.MustCompile(`https://hooks\.slack\.com/services/T[A-Z0-9]+/B[A-Z0-9]+/[A-Za-z0-9]+`),
+			Severity:       api.SeverityMedium,
+			Description:    "Slack webhook URL found in code",
+			Keywords:       []string{"hooks.slack.com"},
+			RequireKeyword: true,
 		},
 		// Stripe
 		{
@@ -351,12 +357,13 @@ func (s *Scanner) loadPatterns() []*SecretPattern {
 		},
 		// Private Keys
 		{
-			ID:          "private-key",
-			Name:        "Private Key",
-			Pattern:     regexp.MustCompile(`-----BEGIN (RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY( BLOCK)?-----`),
-			Severity:    api.SeverityCritical,
-			Description: "Private key file content detected",
-			Keywords:    []string{"private", "key", "rsa", "ssh"},
+			ID:             "private-key",
+			Name:           "Private Key",
+			Pattern:        regexp.MustCompile(`-----BEGIN (RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY( BLOCK)?-----`),
+			Severity:       api.SeverityCritical,
+			Description:    "Private key file content detected",
+			Keywords:       []string{"begin", "private key"},
+			RequireKeyword: true,
 		},
 		// JWT
 		{
@@ -369,47 +376,52 @@ func (s *Scanner) loadPatterns() []*SecretPattern {
 		},
 		// Generic
 		{
-			ID:          "generic-api-key",
-			Name:        "Generic API Key",
-			Pattern:     regexp.MustCompile(`(?i)(api[_\-]?key|apikey|api_secret)[\s]*[=:][\s]*["']?([A-Za-z0-9_\-]{20,})["']?`),
-			Severity:    api.SeverityHigh,
-			Description: "Generic API key pattern detected",
-			Keywords:    []string{"api", "key"},
+			ID:             "generic-api-key",
+			Name:           "Generic API Key",
+			Pattern:        regexp.MustCompile(`(?i)(api[_\-]?key|apikey|api_secret)[\s]*[=:][\s]*["']?([A-Za-z0-9_\-]{20,})["']?`),
+			Severity:       api.SeverityHigh,
+			Description:    "Generic API key pattern detected",
+			Keywords:       []string{"api"},
+			RequireKeyword: true,
 		},
 		{
-			ID:          "generic-secret",
-			Name:        "Generic Secret",
-			Pattern:     regexp.MustCompile(`(?i)(password|passwd|pwd|secret|token|auth)[\s]*[=:][\s]*["']([^"']{8,})["']`),
-			Severity:    api.SeverityHigh,
-			Description: "Hardcoded secret detected",
-			Keywords:    []string{"password", "secret", "token"},
+			ID:             "generic-secret",
+			Name:           "Generic Secret",
+			Pattern:        regexp.MustCompile(`(?i)(password|passwd|pwd|secret|token|auth)[\s]*[=:][\s]*["']([^"']{8,})["']`),
+			Severity:       api.SeverityHigh,
+			Description:    "Hardcoded secret detected",
+			Keywords:       []string{"password", "passwd", "pwd", "secret", "token", "auth"},
+			RequireKeyword: true,
 		},
 		// Database connection strings
 		{
-			ID:          "database-url",
-			Name:        "Database Connection String",
-			Pattern:     regexp.MustCompile(`(?i)(mysql|postgres|postgresql|mongodb|redis|mongodb\+srv):\/\/[^:]+:[^@]+@[^\/]+`),
-			Severity:    api.SeverityHigh,
-			Description: "Database connection string with credentials found",
-			Keywords:    []string{"database", "connection", "url"},
+			ID:             "database-url",
+			Name:           "Database Connection String",
+			Pattern:        regexp.MustCompile(`(?i)(mysql|postgres|postgresql|mongodb|redis|mongodb\+srv):\/\/[^:]+:[^@]+@[^\/]+`),
+			Severity:       api.SeverityHigh,
+			Description:    "Database connection string with credentials found",
+			Keywords:       []string{"mysql://", "postgres://", "postgresql://", "mongodb://", "redis://", "mongodb+srv://"},
+			RequireKeyword: true,
 		},
 		// Heroku
 		{
-			ID:          "heroku-api-key",
-			Name:        "Heroku API Key",
-			Pattern:     regexp.MustCompile(`(?i)heroku[_\-]?api[_\-]?key[\s]*[=:][\s]*["']?([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})["']?`),
-			Severity:    api.SeverityHigh,
-			Description: "Heroku API Key found in code",
-			Keywords:    []string{"heroku"},
+			ID:             "heroku-api-key",
+			Name:           "Heroku API Key",
+			Pattern:        regexp.MustCompile(`(?i)heroku[_\-]?api[_\-]?key[\s]*[=:][\s]*["']?([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})["']?`),
+			Severity:       api.SeverityHigh,
+			Description:    "Heroku API Key found in code",
+			Keywords:       []string{"heroku"},
+			RequireKeyword: true,
 		},
 		// npm
 		{
-			ID:          "npm-token",
-			Name:        "NPM Token",
-			Pattern:     regexp.MustCompile(`(?i)//registry\.npmjs\.org/:_authToken=([A-Za-z0-9\-_]+)`),
-			Severity:    api.SeverityHigh,
-			Description: "NPM authentication token found",
-			Keywords:    []string{"npm", "token"},
+			ID:             "npm-token",
+			Name:           "NPM Token",
+			Pattern:        regexp.MustCompile(`(?i)//registry\.npmjs\.org/:_authToken=([A-Za-z0-9\-_]+)`),
+			Severity:       api.SeverityHigh,
+			Description:    "NPM authentication token found",
+			Keywords:       []string{"npmjs.org", "_authtoken"},
+			RequireKeyword: true,
 		},
 		// Discord
 		{
@@ -474,16 +486,20 @@ func (s *Scanner) collectFiles(dir string) ([]string, error) {
 // isPlaceholder checks if a secret looks like a placeholder value
 func (s *Scanner) isPlaceholder(secret string) bool {
 	placeholders := []string{
-		"xxx", "XXX", "your-", "YOUR_", "<your", "REPLACE",
-		"example", "EXAMPLE", "dummy", "DUMMY", "test", "TEST",
-		"changeme", "CHANGEME", "placeholder", "PLACEHOLDER",
-		"insert", "INSERT", "todo", "TODO", "fixme", "FIXME",
-		"secret", "SECRET", "password", "PASSWORD", "token", "TOKEN",
+		"xxx", "your-", "your_", "<your", "replace",
+		"example", "dummy", "changeme", "placeholder",
+		"insert", "todo", "fixme",
 	}
 
-	lower := strings.ToLower(secret)
+	lower := strings.ToLower(strings.TrimSpace(secret))
+	// Exact matches for generic words that commonly appear as literal placeholders.
+	// Avoid substring matching here — real secrets often contain these words.
+	switch lower {
+	case "secret", "password", "token", "key", "apikey", "api_key", "passwd", "pwd":
+		return true
+	}
 	for _, p := range placeholders {
-		if strings.Contains(lower, strings.ToLower(p)) {
+		if strings.Contains(lower, p) {
 			return true
 		}
 	}
@@ -603,7 +619,7 @@ func (s *Scanner) shouldScanGitHistory(path string) bool {
 	return false
 }
 
-// scanGitHistory scans past commits for secrets using git log
+// scanGitHistory scans past commits for secrets using patch hunks (added lines only).
 func (s *Scanner) scanGitHistory(ctx context.Context, path string) ([]api.Finding, error) {
 	depth := s.config.Git.HistoryDepth
 	if depth <= 0 {
@@ -613,60 +629,117 @@ func (s *Scanner) scanGitHistory(ctx context.Context, path string) ([]api.Findin
 		depth = 50
 	}
 
-	cmd := exec.CommandContext(ctx, "git", "-C", path, "log", "--pretty=format:%H", "-n", strconv.Itoa(depth))
+	cmd := exec.CommandContext(ctx, "git", "-C", path, "log", "-p", "--pretty=format:COMMIT:%H", "--unified=0", "-n", strconv.Itoa(depth))
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("git log failed: %w", err)
 	}
 
-	var findings []api.Finding
-	commits := strings.Split(strings.TrimSpace(string(output)), "\n")
+	const maxPatchBytes = 2 * 1024 * 1024
+	if len(output) > maxPatchBytes {
+		output = output[:maxPatchBytes]
+	}
 
-	for _, commit := range commits {
-		if commit == "" {
-			continue
-		}
+	var findings []api.Finding
+	seen := make(map[string]bool)
+	commit := ""
+	file := ""
+	lineNum := 0
+
+	scanner := bufio.NewScanner(bytes.NewReader(output))
+	// Allow large diff lines
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, 1024*1024)
+
+	for scanner.Scan() {
 		select {
 		case <-ctx.Done():
 			return findings, ctx.Err()
 		default:
 		}
 
-		showCmd := exec.CommandContext(ctx, "git", "-C", path, "show", "--pretty=format:", "--name-only", commit)
-		showOutput, err := showCmd.Output()
-		if err != nil {
-			continue
-		}
-
-		files := strings.Split(strings.TrimSpace(string(showOutput)), "\n")
-		for _, file := range files {
-			if file == "" || !s.Supports(file) {
+		line := scanner.Text()
+		switch {
+		case strings.HasPrefix(line, "COMMIT:"):
+			commit = strings.TrimPrefix(line, "COMMIT:")
+			file = ""
+			lineNum = 0
+		case strings.HasPrefix(line, "+++ b/"):
+			file = strings.TrimPrefix(line, "+++ b/")
+			if file == "/dev/null" {
+				file = ""
+			}
+			lineNum = 0
+		case strings.HasPrefix(line, "@@"):
+			// @@ -a,b +c,d @@
+			lineNum = parseDiffNewLine(line)
+		case strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++"):
+			if file == "" || !s.Supports(file) || filter.ShouldSkip(file, s.config.Scanners.Secrets.Allowlist) {
 				continue
 			}
-			if filter.ShouldSkip(file, s.config.Scanners.Secrets.Allowlist) {
-				continue
+			content := line[1:]
+			lineNum++
+			virtualPath := file
+			if len(commit) >= 8 {
+				virtualPath = fmt.Sprintf("%s@%s", file, commit[:8])
 			}
-
-			diffCmd := exec.CommandContext(ctx, "git", "-C", path, "show", commit+":"+file)
-			content, err := diffCmd.Output()
-			if err != nil {
-				continue
-			}
-
-			virtualPath := fmt.Sprintf("%s@%s", file, commit[:8])
-			fileFindings, _ := s.scanReader(ctx, strings.NewReader(string(content)), virtualPath, path)
+			fileFindings, _ := s.scanReader(ctx, strings.NewReader(content+"\n"), virtualPath, "")
 			for i := range fileFindings {
+				fileFindings[i].Location.StartLine = lineNum
+				fileFindings[i].Location.EndLine = lineNum
 				fileFindings[i].Metadata = map[string]any{
 					"git_commit": commit,
 					"git_file":   file,
 				}
-				fileFindings[i].Description += fmt.Sprintf(" (found in commit %s)", commit[:8])
+				fileFindings[i].Description += fmt.Sprintf(" (found in commit %s)", shortCommit(commit))
+				key := fileFindings[i].RuleID + "|" + file + "|" + fileFindings[i].Location.Snippet
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
+				findings = append(findings, fileFindings[i])
 			}
-			findings = append(findings, fileFindings...)
 		}
 	}
 
-	return findings, nil
+	return findings, scanner.Err()
+}
+
+func shortCommit(commit string) string {
+	if len(commit) >= 8 {
+		return commit[:8]
+	}
+	return commit
+}
+
+func parseDiffNewLine(hunk string) int {
+	// @@ -old +new @@ or @@ -old +new,count @@
+	parts := strings.Split(hunk, " ")
+	for _, p := range parts {
+		if strings.HasPrefix(p, "+") {
+			num := strings.TrimPrefix(p, "+")
+			if idx := strings.IndexByte(num, ','); idx >= 0 {
+				num = num[:idx]
+			}
+			n, err := strconv.Atoi(num)
+			if err == nil {
+				return n - 1 // incremented when consuming added lines
+			}
+		}
+	}
+	return 0
+}
+
+func containsAnyKeyword(lineLower string, keywords []string) bool {
+	for _, kw := range keywords {
+		if kw == "" {
+			continue
+		}
+		if strings.Contains(lineLower, strings.ToLower(kw)) {
+			return true
+		}
+	}
+	return false
 }
 
 // customPatternFile represents the .sentinelflow/patterns.yaml format

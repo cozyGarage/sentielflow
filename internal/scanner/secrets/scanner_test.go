@@ -16,6 +16,36 @@ func (s *Scanner) scanContent(content, filename string, _ int) []api.Finding {
 	return findings
 }
 
+func TestKeywordPrefilterSkipsIrrelevantLines(t *testing.T) {
+	scanner := NewScanner(&config.Config{})
+	// Line with high-entropy-looking value but no password/secret keyword should not match generic-secret
+	content := `normal_config = "abcdefghijklmnop"`
+	findings := scanner.scanContent(content, "cfg.env", 1)
+	for _, f := range findings {
+		if f.RuleID == "generic-secret" {
+			t.Fatalf("generic-secret should require keyword prefilter, got %+v", f)
+		}
+	}
+
+	content = `password = "Kx9#mP2$vL8@nQ4wZr"`
+	findings = scanner.scanContent(content, "cfg.env", 1)
+	found := false
+	for _, f := range findings {
+		if f.RuleID == "generic-secret" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected generic-secret when keyword present")
+	}
+}
+
+func TestParseDiffNewLine(t *testing.T) {
+	if got := parseDiffNewLine("@@ -10,0 +42,2 @@"); got != 41 {
+		t.Fatalf("got %d", got)
+	}
+}
+
 func TestDetectAWSKeys(t *testing.T) {
 	cfg := &config.Config{}
 	scanner := NewScanner(cfg)

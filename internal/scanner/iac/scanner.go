@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/cozygarage/sentinelflow/internal/config"
+	"github.com/cozygarage/sentinelflow/internal/scanner/types"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
 
@@ -20,10 +21,7 @@ type Scanner struct {
 }
 
 // ScannerResult contains scan results (compatible with scanner.ScannerResult)
-type ScannerResult struct {
-	Findings   []api.Finding
-	FilesCount int
-}
+type ScannerResult = types.ScannerResult
 
 // NewScanner creates a new IaC scanner
 func NewScanner(cfg *config.Config) *Scanner {
@@ -83,47 +81,31 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 		Findings: []api.Finding{},
 	}
 
-	var files []string
-
-	info, err := os.Stat(path)
+	files, err := types.ResolveFiles(path, opts, s.collectIaCFiles)
 	if err != nil {
 		return nil, err
 	}
 
-	if info.IsDir() {
-		files, err = s.collectIaCFiles(path)
-		if err != nil {
-			return nil, err
-		}
-	} else if s.Supports(path) {
-		files = []string{path}
-	}
-
-	result.FilesCount = len(files)
-
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-	semaphore := make(chan struct{}, 5)
-
+	var scanFiles []string
 	for _, file := range files {
-		wg.Add(1)
-		go func(filePath string) {
-			defer wg.Done()
-			semaphore <- struct{}{}
-			defer func() { <-semaphore }()
-
-			findings := s.scanFile(ctx, filePath, path)
-			findings = s.filterFindings(findings)
-
-			if len(findings) > 0 {
-				mu.Lock()
-				result.Findings = append(result.Findings, findings...)
-				mu.Unlock()
-			}
-		}(file)
+		if s.Supports(file) {
+			scanFiles = append(scanFiles, file)
+		}
 	}
+	result.FilesCount = len(scanFiles)
 
-	wg.Wait()
+	concurrency := types.EffectiveConcurrency(opts, s.config.Scanners.IaC.Concurrency, 5)
+	var mu sync.Mutex
+	types.RunWorkers(ctx, concurrency, scanFiles, func(filePath string) {
+		findings := s.filterFindings(s.scanFile(ctx, filePath, path))
+		if len(findings) == 0 {
+			return
+		}
+		mu.Lock()
+		result.Findings = append(result.Findings, findings...)
+		mu.Unlock()
+	})
+
 	return result, nil
 }
 

@@ -4,6 +4,7 @@ package scanner
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,24 +15,18 @@ import (
 	"github.com/cozygarage/sentinelflow/internal/baseline"
 	"github.com/cozygarage/sentinelflow/internal/config"
 	"github.com/cozygarage/sentinelflow/internal/scanner/filter"
+	"github.com/cozygarage/sentinelflow/internal/scanner/types"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
 
 // Scanner defines the interface for all security scanners
-// Note: This is an alias to the adapter.Scanner interface
 type Scanner = adapter.Scanner
 
 // ScanOptions contains options for a scan operation
-type ScanOptions struct {
-	Config      *config.Config
-	Files       []string
-	Concurrency int
-	Verbose     bool
-}
+type ScanOptions = types.ScanOptions
 
 // ScannerResult contains results from a single scanner
-// Note: This is an alias to the adapter.ScannerResult type
-type ScannerResult = adapter.ScannerResult
+type ScannerResult = types.ScannerResult
 
 // Engine orchestrates all security scanners
 type Engine struct {
@@ -46,7 +41,6 @@ func NewEngine(cfg *config.Config) *Engine {
 		scanners: []Scanner{},
 	}
 
-	// Add enabled scanners using adapters
 	if cfg.Scanners.Secrets.Enabled {
 		e.scanners = append(e.scanners, adapter.NewSecretsAdapter(cfg))
 	}
@@ -76,13 +70,11 @@ func NewEngine(cfg *config.Config) *Engine {
 func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, error) {
 	startTime := time.Now()
 
-	// Verify path exists
 	if _, err := os.Stat(targetPath); err != nil {
 		return nil, fmt.Errorf("target path does not exist: %s", targetPath)
 	}
 
-	// Collect files to scan
-	files, err := e.collectFiles(targetPath)
+	files, err := e.collectFiles(ctx, targetPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to collect files: %w", err)
 	}
@@ -97,18 +89,21 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 		},
 	}
 
-	// Collect git metadata if available
 	e.collectGitMetadata(targetPath, &result.Metadata)
 
-	// Run scanners concurrently
-	var wg sync.WaitGroup
-	var mu sync.Mutex
+	concurrency := e.config.Scanners.Concurrency
+	if concurrency <= 0 {
+		concurrency = 8
+	}
 
-	opts := ScanOptions{
+	opts := types.ScanOptions{
 		Config:      e.config,
 		Files:       files,
-		Concurrency: 4,
+		Concurrency: concurrency,
 	}
+
+	var wg sync.WaitGroup
+	var mu sync.Mutex
 
 	for _, scanner := range e.scanners {
 		wg.Add(1)
@@ -145,7 +140,6 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 
 	wg.Wait()
 
-	// Apply baseline filtering if enabled
 	if e.config.Baseline.Enabled {
 		blPath := e.config.Baseline.File
 		if blPath == "" {
@@ -164,18 +158,21 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 	return result, nil
 }
 
-// collectFiles recursively collects files from the target path
-func (e *Engine) collectFiles(targetPath string) ([]string, error) {
+func (e *Engine) collectFiles(ctx context.Context, targetPath string) ([]string, error) {
 	var files []string
 
-	err := filepath.Walk(targetPath, func(path string, info os.FileInfo, err error) error {
+	err := filepath.WalkDir(targetPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
 
-		// Skip hidden directories and common non-code directories
-		if info.IsDir() {
-			name := info.Name()
+		if d.IsDir() {
+			name := d.Name()
 			if name == ".git" || name == "node_modules" || name == "vendor" ||
 				name == ".terraform" || name == "__pycache__" || name == ".venv" ||
 				name == "dist" || name == "build" || name == ".cache" {
@@ -184,15 +181,15 @@ func (e *Engine) collectFiles(targetPath string) ([]string, error) {
 			return nil
 		}
 
-		// Skip binary and large files
-		if info.Size() > 5*1024*1024 { // 5MB limit
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+		if info.Size() > 5*1024*1024 {
 			return nil
 		}
 
-		// Get relative path for filtering
 		relPath, _ := filepath.Rel(targetPath, path)
-
-		// Check allowlist patterns
 		if e.shouldSkip(relPath) {
 			return nil
 		}
@@ -204,20 +201,16 @@ func (e *Engine) collectFiles(targetPath string) ([]string, error) {
 	return files, err
 }
 
-// shouldSkip checks if a file should be skipped based on allowlist patterns
 func (e *Engine) shouldSkip(path string) bool {
 	return filter.ShouldSkip(path, e.config.Scanners.Secrets.Allowlist)
 }
 
-// collectGitMetadata extracts git information if available
 func (e *Engine) collectGitMetadata(path string, meta *api.ScanMetadata) {
-	// Check for .git directory
 	gitDir := filepath.Join(path, ".git")
 	if _, err := os.Stat(gitDir); os.IsNotExist(err) {
 		return
 	}
 
-	// Try to read HEAD for branch
 	headFile := filepath.Join(gitDir, "HEAD")
 	if data, err := os.ReadFile(headFile); err == nil {
 		content := string(data)
@@ -226,7 +219,6 @@ func (e *Engine) collectGitMetadata(path string, meta *api.ScanMetadata) {
 		}
 	}
 
-	// Try to read commit
 	if meta.GitBranch != "" {
 		refFile := filepath.Join(gitDir, "refs", "heads", meta.GitBranch)
 		if data, err := os.ReadFile(refFile); err == nil {

@@ -14,6 +14,7 @@ import (
 	"github.com/cozygarage/sentinelflow/internal/config"
 	"github.com/cozygarage/sentinelflow/internal/scanner/filter"
 	"github.com/cozygarage/sentinelflow/internal/scanner/redact"
+	"github.com/cozygarage/sentinelflow/internal/scanner/types"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
 
@@ -35,10 +36,7 @@ type Rule struct {
 }
 
 // ScannerResult contains scan results
-type ScannerResult struct {
-	Findings   []api.Finding
-	FilesCount int
-}
+type ScannerResult = types.ScannerResult
 
 // NewScanner creates a new SAST scanner
 func NewScanner(cfg *config.Config) *Scanner {
@@ -63,52 +61,35 @@ func (s *Scanner) Supports(path string) bool {
 func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*ScannerResult, error) {
 	result := &ScannerResult{Findings: []api.Finding{}}
 
-	var files []string
-	info, err := os.Stat(path)
+	files, err := types.ResolveFiles(path, opts, s.collectFiles)
 	if err != nil {
 		return nil, err
 	}
 
-	if info.IsDir() {
-		files, err = s.collectFiles(path)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		files = []string{path}
-	}
-
-	result.FilesCount = len(files)
-
-	concurrency := 8
-	sem := make(chan struct{}, concurrency)
-
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-
+	var scanFiles []string
 	for _, file := range files {
 		if !s.Supports(file) {
 			continue
 		}
-		wg.Add(1)
-		go func(fp string) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
-			findings, err := s.scanFile(ctx, fp, path)
-			if err != nil {
-				return
-			}
-			if len(findings) > 0 {
-				mu.Lock()
-				result.Findings = append(result.Findings, findings...)
-				mu.Unlock()
-			}
-		}(file)
+		if info, err := os.Stat(file); err == nil && info.Size() > 1*1024*1024 {
+			continue
+		}
+		scanFiles = append(scanFiles, file)
 	}
+	result.FilesCount = len(scanFiles)
 
-	wg.Wait()
+	concurrency := types.EffectiveConcurrency(opts, s.config.Scanners.SAST.Concurrency, 8)
+	var mu sync.Mutex
+	types.RunWorkers(ctx, concurrency, scanFiles, func(fp string) {
+		findings, err := s.scanFile(ctx, fp, path)
+		if err != nil || len(findings) == 0 {
+			return
+		}
+		mu.Lock()
+		result.Findings = append(result.Findings, findings...)
+		mu.Unlock()
+	})
+
 	return result, nil
 }
 

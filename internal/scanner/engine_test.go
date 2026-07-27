@@ -92,7 +92,7 @@ func TestCollectFilesSkipsHidden(t *testing.T) {
 	cfg := &config.Config{}
 	engine := NewEngine(cfg)
 
-	files, err := engine.collectFiles(tmpDir)
+	files, err := engine.collectFiles(context.Background(), tmpDir)
 	if err != nil {
 		t.Fatalf("Failed to collect files: %v", err)
 	}
