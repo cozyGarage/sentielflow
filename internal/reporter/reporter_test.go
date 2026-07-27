@@ -41,7 +41,7 @@ func createTestResult() *api.ScanResult {
 				Scanner:       "secrets",
 				StartTime:     time.Now().Add(-2 * time.Minute),
 				EndTime:       time.Now().Add(-1 * time.Minute),
-				Duration:      time.Minute,
+				Duration:      api.DurationMS(time.Minute),
 				FilesCount:    10,
 				FindingsCount: 1,
 			},
@@ -49,7 +49,7 @@ func createTestResult() *api.ScanResult {
 				Scanner:       "iac",
 				StartTime:     time.Now().Add(-1 * time.Minute),
 				EndTime:       time.Now(),
-				Duration:      time.Minute,
+				Duration:      api.DurationMS(time.Minute),
 				FilesCount:    5,
 				FindingsCount: 1,
 			},
@@ -60,7 +60,7 @@ func createTestResult() *api.ScanResult {
 			EndTime:             time.Now(),
 			SentinelFlowVersion: "1.0.0",
 		},
-		Duration: 2 * time.Minute,
+		Duration: api.DurationMS(2 * time.Minute),
 	}
 }
 
@@ -139,6 +139,9 @@ func TestJSONFormatter(t *testing.T) {
 
 	if !strings.Contains(output, `"findings"`) {
 		t.Error("Missing findings field")
+	}
+	if !strings.Contains(output, `"duration_ms"`) {
+		t.Error("Missing duration_ms field")
 	}
 
 	if !strings.Contains(output, `"SEC-001"`) {

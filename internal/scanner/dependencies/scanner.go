@@ -146,7 +146,7 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 					if s.shouldIgnoreVuln(vuln) {
 						continue
 					}
-					if !meetsMinSeverity(vuln.Severity, s.config.Scanners.Dependencies.Severity) {
+					if !api.MeetsMinimum(vuln.Severity, s.config.Scanners.Dependencies.Severity) {
 						continue
 					}
 
@@ -175,21 +175,6 @@ func (s *Scanner) shouldIgnoreVuln(vuln Vulnerability) bool {
 		}
 	}
 	return false
-}
-
-func meetsMinSeverity(found api.Severity, minimum string) bool {
-	order := map[api.Severity]int{
-		api.SeverityCritical: 4,
-		api.SeverityHigh:     3,
-		api.SeverityMedium:   2,
-		api.SeverityLow:      1,
-		api.SeverityInfo:     0,
-	}
-	min := order[api.Severity(minimum)]
-	if min == 0 && minimum != "info" && minimum != "low" {
-		min = order[api.SeverityMedium]
-	}
-	return order[found] >= min
 }
 
 // detectEcosystems detects which package ecosystems are used
@@ -257,15 +242,13 @@ func normalizeVersion(version string) string {
 }
 
 func severityFromVulnDB(severity string, cvss float64) api.Severity {
-	switch strings.ToLower(severity) {
-	case "critical":
-		return api.SeverityCritical
-	case "high":
-		return api.SeverityHigh
-	case "medium", "moderate":
-		return api.SeverityMedium
-	case "low":
-		return api.SeverityLow
+	trimmed := strings.TrimSpace(severity)
+	if trimmed != "" {
+		sev := api.ParseSeverity(trimmed)
+		switch strings.ToLower(trimmed) {
+		case "critical", "high", "medium", "moderate", "low", "info", "informational":
+			return sev
+		}
 	}
 
 	if cvss >= 9.0 {

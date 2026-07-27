@@ -131,7 +131,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 
 	result.Metadata.SentinelFlowVersion = GetVersion()
-	result.Duration = time.Since(startTime)
+	result.Duration = api.DurationMS(time.Since(startTime))
 
 	// Generate report
 	rep := reporter.New(cfg)
@@ -293,7 +293,7 @@ func printScanSummary(result *api.ScanResult) {
 
 	fmt.Println()
 	fmt.Printf("  Total findings: %d\n", len(result.Findings))
-	fmt.Printf("  Scan duration:  %s\n", result.Duration.Round(time.Millisecond))
+	fmt.Printf("  Scan duration:  %s\n", result.Duration.Std().Round(time.Millisecond))
 
 	if len(result.Findings) == 0 {
 		fmt.Println()

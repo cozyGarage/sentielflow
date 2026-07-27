@@ -36,7 +36,7 @@ func createLargeResult(count int) *api.ScanResult {
 				Scanner:       "test",
 				StartTime:     time.Now(),
 				EndTime:       time.Now().Add(time.Second),
-				Duration:      time.Second,
+				Duration:      api.DurationMS(time.Second),
 				FilesCount:    100,
 				FindingsCount: count,
 			},
@@ -47,7 +47,7 @@ func createLargeResult(count int) *api.ScanResult {
 			EndTime:             time.Now().Add(time.Second),
 			SentinelFlowVersion: "1.0.0",
 		},
-		Duration: time.Second,
+		Duration: api.DurationMS(time.Second),
 	}
 }
 

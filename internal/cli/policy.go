@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cozygarage/sentinelflow/internal/scanner/policy"
+	policiespkg "github.com/cozygarage/sentinelflow/policies"
 )
 
 var policyCmd = &cobra.Command{
@@ -26,39 +27,7 @@ var policyListCmd = &cobra.Command{
 		fmt.Println(color.CyanString("Built-in Policies:"))
 		fmt.Println()
 
-		builtinPolicies := []struct {
-			Name        string
-			Description string
-			Severity    string
-			Category    string
-		}{
-			{
-				Name:        "no-public-s3-buckets",
-				Description: "Prevents S3 buckets from being publicly accessible",
-				Severity:    "critical",
-				Category:    "storage",
-			},
-			{
-				Name:        "no-privileged-containers",
-				Description: "Prevents deployment of privileged containers",
-				Severity:    "critical",
-				Category:    "kubernetes",
-			},
-			{
-				Name:        "require-https",
-				Description: "Ensures all endpoints use HTTPS",
-				Severity:    "high",
-				Category:    "network",
-			},
-			{
-				Name:        "enforce-encryption",
-				Description: "Requires encryption at rest for storage",
-				Severity:    "high",
-				Category:    "storage",
-			},
-		}
-
-		for _, p := range builtinPolicies {
+		for _, p := range policiespkg.List() {
 			fmt.Printf("  • %s\n", color.GreenString(p.Name))
 			fmt.Printf("    %s\n", p.Description)
 			fmt.Printf("    Severity: %s | Category: %s\n\n", p.Severity, p.Category)

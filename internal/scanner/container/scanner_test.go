@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/cozygarage/sentinelflow/internal/config"
+	"github.com/cozygarage/sentinelflow/pkg/api"
 )
 
 func TestDetectImageFromDockerfile(t *testing.T) {
@@ -33,6 +34,15 @@ func TestValidateImageRef(t *testing.T) {
 	}
 }
 
+func TestParseSeverityViaAPI(t *testing.T) {
+	if api.ParseSeverity("CRITICAL") != api.SeverityCritical {
+		t.Fatal("expected CRITICAL -> critical")
+	}
+	if api.ParseSeverity("unknown") != api.SeverityInfo {
+		t.Fatal("expected unknown -> info")
+	}
+}
+
 func TestScanSkipsWithoutTrivy(t *testing.T) {
 	if IsTrivyAvailable() {
 		t.Skip("trivy is installed, skipping skip test")
@@ -56,14 +66,5 @@ func TestSupportsDockerfile(t *testing.T) {
 	s := NewScanner(&config.Config{})
 	if !s.Supports("Dockerfile") {
 		t.Error("should support Dockerfile")
-	}
-}
-
-func TestParseSeverity(t *testing.T) {
-	if parseSeverity("CRITICAL") != "critical" {
-		t.Error("expected critical")
-	}
-	if parseSeverity("unknown") != "info" {
-		t.Error("expected info for unknown")
 	}
 }

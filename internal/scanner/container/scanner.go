@@ -136,8 +136,8 @@ func (s *Scanner) runTrivy(ctx context.Context, image string) ([]api.Finding, er
 
 	for _, r := range report.Results {
 		for _, v := range r.Vulnerabilities {
-			sev := parseSeverity(v.Severity)
-			if !meetsSeverity(string(sev), minSeverity) {
+			sev := api.ParseSeverity(v.Severity)
+			if !api.MeetsMinimum(sev, minSeverity) {
 				continue
 			}
 
@@ -188,22 +188,3 @@ func validateImageRef(image string) error {
 	return nil
 }
 
-func parseSeverity(s string) api.Severity {
-	switch strings.ToLower(s) {
-	case "critical":
-		return api.SeverityCritical
-	case "high":
-		return api.SeverityHigh
-	case "medium":
-		return api.SeverityMedium
-	case "low":
-		return api.SeverityLow
-	default:
-		return api.SeverityInfo
-	}
-}
-
-func meetsSeverity(found, minimum string) bool {
-	order := map[string]int{"critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0}
-	return order[found] >= order[minimum]
-}

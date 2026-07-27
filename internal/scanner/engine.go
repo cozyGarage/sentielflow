@@ -123,7 +123,7 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 				Scanner:   s.Name(),
 				StartTime: scanStart,
 				EndTime:   time.Now(),
-				Duration:  scanDuration,
+				Duration:  api.DurationMS(scanDuration),
 			}
 
 			if err != nil {
@@ -159,7 +159,7 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 	}
 
 	result.Metadata.EndTime = time.Now()
-	result.Duration = time.Since(startTime)
+	result.Duration = api.DurationMS(time.Since(startTime))
 
 	return result, nil
 }

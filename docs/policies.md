@@ -8,12 +8,14 @@ Open Policy Agent (OPA) is a general-purpose policy engine. Rego is its declarat
 
 ## Built-in policies
 
-Shipped in the `policies/` directory:
+Shipped and embedded in the binary (`policies.builtin`):
 
 - `no-public-s3-buckets` — S3 public ACL and access-block checks
 - `no-privileged-containers` — Kubernetes privileged/root containers
 - `require-https` — TLS on ingress and endpoints
 - `enforce-encryption` — Encryption at rest for cloud storage
+
+They load from the embedded registry even when the scan target has no local `policies/` directory. Project `.rego` files with the same name override the embedded copy.
 
 List them:
 
