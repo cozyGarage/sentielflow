@@ -20,6 +20,8 @@ type policyInput struct {
 var skipDirs = map[string]bool{
 	".git": true, "node_modules": true, "vendor": true, ".terraform": true,
 	"__pycache__": true, ".venv": true, "dist": true, "build": true, ".cache": true,
+	// Intentional misconfig / secret samples used by unit tests
+	"testdata": true, "fixtures": true,
 }
 
 func collectPolicyInputs(root string) ([]policyInput, error) {

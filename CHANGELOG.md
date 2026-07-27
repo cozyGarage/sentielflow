@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Repo self-scan skips `test/fixtures` samples; ignore OPA-indirect OTEL advisory until upstream bumps
 - Policy CLI docs use positional `policy test [policy] [input-file]` (not `--input`)
 - Action baseline description points at `.sentinelflow/baseline.yaml`
 - Secrets placeholder filtering checks the captured value (not keyword-bearing full matches) and avoids over-matching on words like "password"/"secret"

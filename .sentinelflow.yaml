@@ -4,9 +4,10 @@ scanners:
   secrets:
     enabled: true
     allowlist:
+      - "test/**"
+      - "**/testdata/**"
       - "**/*_test.go"
       - "**/*_bench_test.go"
-      - "**/testdata/**"
       # Scanner implementations contain intentional pattern examples
       - "internal/scanner/sast/scanner.go"
       - "internal/scanner/secrets/scanner.go"
@@ -24,6 +25,8 @@ scanners:
     ignore_cves:
       # Indirect via OPA; openpgp subpackage is unmaintained — tracked upstream
       - GO-2026-5932
+      # Indirect via OPA/otel; bump when OPA picks up a fixed otel release
+      - GO-2026-5158
 
   sast:
     enabled: true
