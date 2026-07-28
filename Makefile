@@ -1,9 +1,9 @@
 # Makefile for SentinelFlow
 
-BINARY_NAME=sentinelflow.exe
+BINARY_NAME=sentinelflow
 DOCKER_IMAGE=sentinelflow/sentinelflow:latest
 
-.PHONY: all build test bench clean docker-build run
+.PHONY: all build test bench clean docker-build run demo
 
 all: test build
 
@@ -30,10 +30,15 @@ docker-build:
 clean:
 	@echo "Cleaning up..."
 	@if [ -f $(BINARY_NAME) ]; then rm $(BINARY_NAME); fi
+	@if [ -f sentinelflow.exe ]; then rm sentinelflow.exe; fi
 	@go clean
 
 run: build
 	./$(BINARY_NAME) --help
+
+demo: build
+	@chmod +x ./scripts/demo.sh
+	./scripts/demo.sh
 
 scan-self: build
 	./$(BINARY_NAME) scan --all .

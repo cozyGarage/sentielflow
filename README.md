@@ -1,108 +1,159 @@
 # SentinelFlow
 
-[![SentinelFlow Security Scan](https://github.com/cozyGarage/sentielflow/actions/workflows/security-scan.yml/badge.svg)](https://github.com/cozyGarage/sentielflow/actions/workflows/security-scan.yml)
+<p align="center">
+  <img src="docs/assets/logo.png" alt="SentinelFlow logo" width="220" />
+</p>
 
-**CI/CD Security Gatekeeper**
+<p align="center">
+  <strong>CI/CD Security Gatekeeper</strong><br/>
+  Secrets · IaC · Dependencies · SAST · Policy · SBOM — one binary for the pipeline.
+</p>
 
-SentinelFlow is a security scanning tool that integrates with CI/CD pipelines to detect leaked secrets, insecure infrastructure configurations, vulnerable dependencies, and policy violations.
+<p align="center">
+  <a href="https://github.com/cozyGarage/sentielflow/actions/workflows/security-scan.yml"><img src="https://github.com/cozyGarage/sentielflow/actions/workflows/security-scan.yml/badge.svg" alt="Security Scan" /></a>
+  <a href="https://github.com/cozyGarage/sentielflow/releases"><img src="https://img.shields.io/github/v/release/cozyGarage/sentielflow?label=release" alt="Release" /></a>
+  <a href="https://hub.docker.com/r/sentinelflow/sentinelflow"><img src="https://img.shields.io/badge/docker-sentinelflow%2Fsentinelflow-0db7ed" alt="Docker" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License" /></a>
+</p>
+
+<p align="center">
+  <img src="docs/assets/banner.png" alt="SentinelFlow banner" width="100%" />
+</p>
+
+SentinelFlow scans your repo for leaked secrets, insecure infrastructure, vulnerable dependencies, and policy violations — then fails the build when gates trip.
+
+## See it in action
+
+<p align="center">
+  <img src="docs/assets/screenshots/cli-scan.png" alt="CLI scan of the demo project" width="100%" />
+</p>
+
+<p align="center">
+  <img src="docs/assets/screenshots/report-html.png" alt="HTML security report" width="100%" />
+</p>
+
+<p align="center">
+  <img src="docs/assets/screenshots/report-dashboard.png" alt="Report dashboard concept" width="100%" />
+</p>
+
+<p align="center">
+  <img src="docs/assets/screenshots/cicd-flow.png" alt="CI/CD pipeline with SentinelFlow gate" width="100%" />
+</p>
+
+<p align="center">
+  <img src="docs/assets/hacker.png" alt="Shift-left security illustration" width="720" />
+</p>
+
+### 60-second local demo
+
+```bash
+# Docker (no Go toolchain required)
+docker run --rm -v "$PWD:/workspace" -w /workspace \
+  sentinelflow/sentinelflow:latest \
+  scan --secrets --iac --sast examples/demo-project
+
+# Or from a clone
+make demo
+```
+
+`make demo` builds the binary, scans [`examples/demo-project`](examples/demo-project) (intentional findings), and writes:
+
+- `demo-out/report.html`
+- `demo-out/report.md`
+- `demo-out/report.sarif`
+
+Sample HTML/Markdown reports are also checked in under [`docs/assets/demo/`](docs/assets/demo/).
+
+## Install — pick your delivery path
+
+| Method | Best for | Command |
+| --- | --- | --- |
+| **Docker** | CI, local tryouts | `docker pull sentinelflow/sentinelflow:latest` |
+| **GitHub Release** | Laptops / air-gapped runners | Download from [Releases](https://github.com/cozyGarage/sentielflow/releases) |
+| **GitHub Action** | Pull requests | `uses: cozyGarage/sentielflow/.github/actions/sentinelflow@main` |
+| **Go install** | Go developers | `go install github.com/cozygarage/sentinelflow/cmd/sentinelflow@latest` |
+| **Build from source** | Contributors | `make build` |
+
+### Docker
+
+```bash
+docker pull sentinelflow/sentinelflow:latest
+
+docker run --rm -v "$PWD:/workspace" -w /workspace \
+  sentinelflow/sentinelflow:latest \
+  scan --all --format sarif -o report.sarif
+```
+
+Compose helpers are in [`docker-compose.yml`](docker-compose.yml) (`scan-html`, `scan-sarif`, `scan-markdown`).
+
+### GitHub Release binary
+
+```bash
+# Example: Linux amd64 — replace VERSION with a release tag (e.g. 1.0.0)
+VERSION=1.0.0
+curl -sL "https://github.com/cozyGarage/sentielflow/releases/download/v${VERSION}/sentinelflow_${VERSION}_linux_amd64.tar.gz" \
+  | tar -xz
+./sentinelflow version
+```
+
+Windows/macOS/arm64 archives are published by GoReleaser on every `v*` tag.
+
+### GitHub Action (Docker delivery)
+
+Prefer the published image instead of compiling Go on every job:
+
+```yaml
+- uses: cozyGarage/sentielflow/.github/actions/sentinelflow@main
+  with:
+    delivery: docker
+    image: sentinelflow/sentinelflow:latest
+    scan-all: 'true'
+    fail-on: high
+    format: sarif
+    output: report.sarif
+```
+
+`delivery: build` (default) still compiles from source when you want bleeding-edge `main`.
 
 ## Features
 
-- **Secret Scanning**: Detect leaked API keys, tokens, passwords, and credentials (including git history)
-- **Infrastructure-as-Code**: Scan Terraform, Kubernetes, and Dockerfile configurations
-- **Dependency Analysis**: Check for vulnerable dependencies via the OSV API
-- **SAST**: OWASP-oriented static analysis patterns for common languages
-- **Container Scanning**: Trivy integration for image vulnerability scanning
-- **License Policy**: Flag dependencies with denied licenses (GPL, AGPL, etc.)
-- **Policy Enforcement**: OPA-based policy-as-code validation
-- **SBOM Generation**: CycloneDX SBOM output for supply chain visibility
-- **Multiple Report Formats**: Text, Markdown, SARIF, JSON, and HTML output
+- **Secret scanning** — tokens, passwords, entropy, optional git history
+- **Infrastructure-as-Code** — Terraform, Kubernetes, Dockerfiles
+- **Dependencies** — OSV vulnerability lookup across Go/npm/PyPI/Maven/Cargo
+- **SAST** — OWASP-oriented static patterns
+- **Container** — Trivy integration when available
+- **License policy** — deny GPL/AGPL/SSPL-style licenses
+- **Policy-as-code** — embedded OPA/Rego built-ins
+- **SBOM** — CycloneDX output
+- **Reports** — text, Markdown, SARIF, JSON, HTML
 
-> **Note:** AI-powered code review is planned. The `--ai` flag and `scanners.ai` config exist for forward compatibility, but enabling them is rejected in this release.
-
-## Quick Start
-
-### Installation
-
-```bash
-# Build from source
-git clone https://github.com/cozygarage/sentinelflow
-cd sentinelflow
-go build -o sentinelflow ./cmd/sentinelflow
-
-# Or use Make (Windows: sentinelflow.exe)
-make build
-```
-
-### Basic Usage
-
-```bash
-# Initialize configuration
-sentinelflow init
-
-# Run all scanners
-sentinelflow scan --all
-
-# Scan specific types
-sentinelflow scan --secrets --iac
-
-# Generate SARIF report for GitHub
-sentinelflow scan --all --format sarif -o report.sarif
-
-# Generate Markdown report for PR comments
-sentinelflow scan --all --format markdown -o report.md
-```
+> AI-powered review is **planned**. `--ai` / `scanners.ai.enabled` are rejected in this release.
 
 ## Configuration
 
-Create a `.sentinelflow.yaml` file in your project root (or run `sentinelflow init`):
-
 ```yaml
 version: "1.0"
-
 scanners:
-  secrets:
-    enabled: true
-    allowlist:
-      - "test/**"
-      - "**/*_test.go"
-    entropy_threshold: 4.5
-
+  secrets: { enabled: true }
   iac:
     enabled: true
-    frameworks:
-      - terraform
-      - kubernetes
-      - dockerfile
-
-  dependencies:
-    enabled: true
-    ecosystems:
-      - auto
-    severity: medium
-
-  ai:
-    enabled: false  # Planned; rejected if true in this release
-
-policies:
-  enabled: true
-
+    frameworks: [terraform, kubernetes, dockerfile]
+  dependencies: { enabled: true, ecosystems: [auto] }
 fail_on:
   severity: high
   secrets: true
   policy_violations: true
 ```
 
-See [Configuration Reference](docs/configuration.md) for all options.
+Full reference: [docs/configuration.md](docs/configuration.md).
 
-## CI/CD Integration
+## CI/CD
 
-### GitHub Actions
+### GitHub Actions + SARIF
 
 ```yaml
 name: Security Scan
 on: [pull_request]
-
 jobs:
   security:
     runs-on: ubuntu-latest
@@ -113,38 +164,34 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - uses: cozyGarage/sentielflow/.github/actions/sentinelflow@main
         with:
+          delivery: docker
           scan-all: 'true'
           fail-on: high
           format: sarif
           output: report.sarif
-
       - uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: report.sarif
 ```
 
-### GitLab CI
+### GitLab CI (container)
 
 ```yaml
 sentinelflow:
-  image: golang:1.25
+  image: sentinelflow/sentinelflow:latest
   script:
-    - go build -o sentinelflow ./cmd/sentinelflow
-    - ./sentinelflow scan --all --format sarif -o gl-security-report.sarif
+    - sentinelflow scan --all --format sarif -o gl-security-report.sarif
   artifacts:
     reports:
       sast: gl-security-report.sarif
 ```
 
-See [CI/CD Integration](docs/cicd-integration.md) for more examples.
+More examples: [docs/cicd-integration.md](docs/cicd-integration.md).
 
 ## Architecture
-
-SentinelFlow follows a pipeline-oriented design: a central scan engine orchestrates adapters, aggregates findings, and emits SARIF for the GitHub Security tab.
 
 ```mermaid
 flowchart LR
@@ -152,119 +199,46 @@ flowchart LR
         SRC[Source tree]
         CFG[.sentinelflow.yaml]
     end
-
     subgraph Engine
         SE[Scan Engine]
         AD1[Secrets]
         AD2[IaC]
-        AD3[Dependencies OSV]
+        AD3[Dependencies]
         AD4[SAST]
-        AD5[Policy OPA]
-        AD6[License]
+        AD5[Policy]
     end
-
     subgraph Output
-        SARIF[SARIF report]
-        GH[GitHub Security tab]
-        MD[Markdown PR comment]
+        SARIF[SARIF]
+        HTML[HTML]
+        MD[Markdown]
     end
-
     SRC --> SE
     CFG --> SE
-    SE --> AD1 & AD2 & AD3 & AD4 & AD5 & AD6
-    AD1 & AD2 & AD3 & AD4 & AD5 & AD6 --> SE
-    SE --> SARIF --> GH
-    SE --> MD
+    SE --> AD1 & AD2 & AD3 & AD4 & AD5
+    AD1 & AD2 & AD3 & AD4 & AD5 --> SE
+    SE --> SARIF & HTML & MD
 ```
-
-| Layer | Responsibility |
-| --- | --- |
-| **Scan engine** | File discovery, concurrent scanner dispatch, result aggregation |
-| **Adapters** | Secrets, IaC, dependencies (OSV), SAST, license, OPA policies |
-| **Reporter** | SARIF, JSON, Markdown, HTML — SARIF uploads integrate with GitHub Advanced Security |
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) and [docs/architecture.md](docs/architecture.md) for deeper diagrams.
-
-## Compliance & Pipeline Integration
-
-SentinelFlow is designed as a **shift-left security gate** suitable for regulated environments. It maps cleanly to common control themes without storing or exfiltrating discovered secrets.
-
-| Control theme | SentinelFlow capability | Framework alignment |
-| --- | --- | --- |
-| **Secrets & credential hygiene** | Regex + entropy scanning, CI fail-on-secrets | PCI-DSS Req. 3 & 8 (protect stored credentials; identify users) |
-| **Secure configuration** | IaC scanning for Terraform, Kubernetes, Dockerfiles | PCI-DSS Req. 2 (secure configurations); DORA ICT risk management |
-| **Dependency & supply-chain risk** | Lockfile parsing + OSV vulnerability lookup | DORA Art. 6 (ICT risk management); PCI-DSS Req. 6 (secure development) |
-| **Policy-as-code enforcement** | OPA/Rego gates (e.g. no privileged containers, HTTPS required) | DORA operational resilience testing; internal change-control policies |
-| **Audit trail** | SARIF artifacts uploaded to GitHub Security; SBOM generation in CI | Demonstrates evidence collection for audit and incident response |
-
-**Pipeline integration pattern:** run `sentinelflow scan --all --format sarif` on every pull request, upload SARIF to the platform security tab, and block merge when severity thresholds are exceeded. The included [`.github/workflows/security-scan.yml`](.github/workflows/security-scan.yml) workflow implements this end-to-end (scan → SARIF upload → PR comment → SBOM job).
-
-## Scanners
-
-| Scanner | Flag | Description |
-| --- | --- | --- |
-| **Secrets** | `--secrets` | Regex, entropy, git history |
-| **IaC** | `--iac` | Terraform, Kubernetes, Dockerfile |
-| **Dependencies** | `--deps` | OSV vulnerability lookup |
-| **SAST** | `--sast` | OWASP-oriented static patterns |
-| **Container** | `--container` | Trivy image scanning |
-| **License** | `--license` | Denied license detection |
-| **Policy** | (config) | OPA/Rego policy enforcement |
-
-## CLI Commands
-
-| Command | Description |
-| --- | --- |
-| `sentinelflow scan` | Run security scanners |
-| `sentinelflow init` | Create default configuration |
-| `sentinelflow sbom` | Generate CycloneDX SBOM |
-| `sentinelflow policy list` | List built-in policies |
-| `sentinelflow policy validate` | Validate Rego policy syntax |
-| `sentinelflow policy test` | Test a policy against input JSON |
-| `sentinelflow policy generate` | Create a new policy template |
-| `sentinelflow hook install` | Install pre-commit hook |
-| `sentinelflow version` | Print version information |
 
 ## Documentation
 
-- [Usage Guide](docs/usage.md)
-- [Configuration Reference](docs/configuration.md)
-- [Scanner Documentation](docs/scanners.md)
-- [CI/CD Integration](docs/cicd-integration.md)
-- [Writing Custom Policies](docs/policies.md)
-- [Architecture](docs/architecture.md)
+- [Usage](docs/usage.md) · [Configuration](docs/configuration.md) · [Scanners](docs/scanners.md)
+- [Policies](docs/policies.md) · [CI/CD](docs/cicd-integration.md) · [Architecture](docs/architecture.md)
 
 ## Development
 
 ```bash
-# Run tests
 go test ./...
-
-# Run integration tests
-go test -tags=integration ./test/...
-
-# Build
-go build -o sentinelflow ./cmd/sentinelflow
-
-# Run locally
-./sentinelflow scan --all --verbose
+make build
+make demo
+make scan-self
 ```
 
 ## Security
 
-- **No secret storage**: Never stores or transmits discovered secrets
-- **Local processing**: All scanning happens locally by default
-- **Minimal permissions**: CI integration requires only read access to code
+- Findings are redacted; secrets are not stored or exfiltrated
+- Scanning is local by default (OSV receives package names/versions only)
+- Container image runs as a non-root user
 
-## Contributing
+## License
 
-Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-## Acknowledgments
-
-Built with:
-
-- [Cobra](https://github.com/spf13/cobra) — CLI framework
-- [Viper](https://github.com/spf13/viper) — Configuration management
-- [OPA](https://www.openpolicyagent.org/) — Policy engine
-- [go-sarif](https://github.com/owenrumney/go-sarif) — SARIF support
+MIT — see [LICENSE](LICENSE).
