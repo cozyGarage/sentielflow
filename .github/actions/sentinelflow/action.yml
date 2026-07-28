@@ -101,9 +101,11 @@ runs:
     - name: Pull SentinelFlow image
       if: inputs.delivery != 'build'
       shell: bash
+      env:
+        SF_IMAGE: ${{ inputs.image }}
       run: |
-        docker pull "${{ inputs.image }}"
-        docker run --rm "${{ inputs.image }}" version
+        docker pull "${SF_IMAGE}"
+        docker run --rm "${SF_IMAGE}" version
 
     - name: Install Trivy
       if: inputs.scan-container == 'true' && inputs.delivery == 'build'
@@ -120,31 +122,49 @@ runs:
       id: scan
       shell: bash
       working-directory: ${{ inputs.working-directory }}
+      env:
+        SF_DELIVERY: ${{ inputs.delivery }}
+        SF_IMAGE: ${{ inputs.image }}
+        SF_SCAN_ALL: ${{ inputs.scan-all }}
+        SF_SCAN_SECRETS: ${{ inputs.scan-secrets }}
+        SF_SCAN_IAC: ${{ inputs.scan-iac }}
+        SF_SCAN_DEPS: ${{ inputs.scan-deps }}
+        SF_SCAN_SAST: ${{ inputs.scan-sast }}
+        SF_SCAN_LICENSE: ${{ inputs.scan-license }}
+        SF_SCAN_CONTAINER: ${{ inputs.scan-container }}
+        SF_CONTAINER_IMAGE: ${{ inputs.container-image }}
+        SF_USE_BASELINE: ${{ inputs.use-baseline }}
+        SF_FAIL_ON: ${{ inputs.fail-on }}
+        SF_FORMAT: ${{ inputs.format }}
+        SF_OUTPUT: ${{ inputs.output }}
+        SF_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        SF_WORKSPACE: ${{ github.workspace }}
       run: |
-        if [ "${{ inputs.scan-all }}" = "true" ]; then
-          ARGS="--all"
+        set -euo pipefail
+        ARGS=()
+        if [ "${SF_SCAN_ALL}" = "true" ]; then
+          ARGS+=(--all)
         else
-          ARGS=""
-          [ "${{ inputs.scan-secrets }}" = "true" ] && ARGS="$ARGS --secrets"
-          [ "${{ inputs.scan-iac }}" = "true" ] && ARGS="$ARGS --iac"
-          [ "${{ inputs.scan-deps }}" = "true" ] && ARGS="$ARGS --deps"
-          [ "${{ inputs.scan-sast }}" = "true" ] && ARGS="$ARGS --sast"
-          [ "${{ inputs.scan-license }}" = "true" ] && ARGS="$ARGS --license"
+          [ "${SF_SCAN_SECRETS}" = "true" ] && ARGS+=(--secrets)
+          [ "${SF_SCAN_IAC}" = "true" ] && ARGS+=(--iac)
+          [ "${SF_SCAN_DEPS}" = "true" ] && ARGS+=(--deps)
+          [ "${SF_SCAN_SAST}" = "true" ] && ARGS+=(--sast)
+          [ "${SF_SCAN_LICENSE}" = "true" ] && ARGS+=(--license)
         fi
 
-        if [ "${{ inputs.scan-container }}" = "true" ]; then
-          ARGS="$ARGS --container"
-          if [ -n "${{ inputs.container-image }}" ]; then
-            ARGS="$ARGS --container-image ${{ inputs.container-image }}"
+        if [ "${SF_SCAN_CONTAINER}" = "true" ]; then
+          ARGS+=(--container)
+          if [ -n "${SF_CONTAINER_IMAGE}" ]; then
+            ARGS+=(--container-image "${SF_CONTAINER_IMAGE}")
           fi
         fi
 
-        if [ "${{ inputs.use-baseline }}" = "true" ]; then
-          ARGS="$ARGS --baseline"
+        if [ "${SF_USE_BASELINE}" = "true" ]; then
+          ARGS+=(--baseline)
         fi
 
-        OUT_PATH="${{ github.workspace }}/${{ inputs.output }}"
-        WORK_DIR="${{ inputs.working-directory }}"
+        OUT_PATH="${SF_WORKSPACE}/${SF_OUTPUT}"
+        WORK_DIR="${SF_WORKING_DIRECTORY}"
         if [ -z "${WORK_DIR}" ] || [ "${WORK_DIR}" = "." ]; then
           DOCKER_WORKDIR="/workspace"
         else
@@ -152,22 +172,22 @@ runs:
         fi
 
         set +e
-        if [ "${{ inputs.delivery }}" = "build" ]; then
-          SF="${{ github.workspace }}/sentinelflow"
-          "$SF" scan $ARGS \
-            --fail-on ${{ inputs.fail-on }} \
-            --format ${{ inputs.format }} \
-            -o "$OUT_PATH"
+        if [ "${SF_DELIVERY}" = "build" ]; then
+          SF="${SF_WORKSPACE}/sentinelflow"
+          "$SF" scan "${ARGS[@]}" \
+            --fail-on "${SF_FAIL_ON}" \
+            --format "${SF_FORMAT}" \
+            -o "${OUT_PATH}"
           EXIT_CODE=$?
         else
           docker run --rm \
-            -v "${{ github.workspace }}:/workspace" \
+            -v "${SF_WORKSPACE}:/workspace" \
             -w "${DOCKER_WORKDIR}" \
-            "${{ inputs.image }}" \
-            scan $ARGS \
-              --fail-on ${{ inputs.fail-on }} \
-              --format ${{ inputs.format }} \
-              -o "/workspace/${{ inputs.output }}"
+            "${SF_IMAGE}" \
+            scan "${ARGS[@]}" \
+              --fail-on "${SF_FAIL_ON}" \
+              --format "${SF_FORMAT}" \
+              -o "/workspace/${SF_OUTPUT}"
           EXIT_CODE=$?
         fi
         set -e
@@ -175,11 +195,11 @@ runs:
         echo "exit-code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
 
         if [ -f "$OUT_PATH" ]; then
-          COUNT_HELPER="${{ github.workspace }}/scripts/count-findings.sh"
-          if [ "${{ inputs.format }}" = "json" ]; then
+          COUNT_HELPER="${SF_WORKSPACE}/scripts/count-findings.sh"
+          if [ "${SF_FORMAT}" = "json" ]; then
             COUNT=$(bash "$COUNT_HELPER" json "$OUT_PATH")
             echo "findings-count=$COUNT" >> "$GITHUB_OUTPUT"
-          elif [ "${{ inputs.format }}" = "sarif" ]; then
+          elif [ "${SF_FORMAT}" = "sarif" ]; then
             COUNT=$(bash "$COUNT_HELPER" sarif "$OUT_PATH")
             echo "findings-count=$COUNT" >> "$GITHUB_OUTPUT"
           else

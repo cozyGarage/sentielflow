@@ -3,11 +3,13 @@
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/cozyGarage/sentielflow/main/scripts/install.sh | bash
 #   VERSION=1.0.0 ./scripts/install.sh
+# Verifies the downloaded archive against checksums.txt from the same release.
 set -euo pipefail
 
 REPO="${REPO:-cozyGarage/sentielflow}"
 INSTALL_DIR="${INSTALL_DIR:-${PWD}/bin}"
 VERSION="${VERSION:-}"
+SKIP_CHECKSUM="${SKIP_CHECKSUM:-0}"
 
 detect_os() {
   case "$(uname -s)" in
@@ -24,6 +26,45 @@ detect_arch() {
     aarch64|arm64) echo arm64 ;;
     *) echo "unsupported arch: $(uname -m)" >&2; exit 1 ;;
   esac
+}
+
+sha256_file() {
+  local file="$1"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "${file}" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "${file}" | awk '{print $1}'
+  else
+    echo "need sha256sum or shasum to verify checksums" >&2
+    exit 1
+  fi
+}
+
+verify_checksum() {
+  local asset="$1"
+  local archive="$2"
+  local checksums="$3"
+
+  # GoReleaser checksums.txt: "<hex>  <filename>" (two spaces)
+  local expected
+  expected="$(awk -v asset="${asset}" '
+    $2 == asset { print $1; exit }
+  ' "${checksums}")"
+
+  if [[ -z "${expected}" ]]; then
+    echo "checksum entry for ${asset} not found in checksums.txt" >&2
+    exit 1
+  fi
+
+  local actual
+  actual="$(sha256_file "${archive}")"
+  if [[ "${actual}" != "${expected}" ]]; then
+    echo "checksum mismatch for ${asset}" >&2
+    echo "  expected: ${expected}" >&2
+    echo "  actual:   ${actual}" >&2
+    exit 1
+  fi
+  echo "Checksum OK (${asset})"
 }
 
 if [[ -z "${VERSION}" ]]; then
@@ -57,6 +98,7 @@ EXT="tar.gz"
 
 ASSET="sentinelflow_${VERSION}_${OS}_${ARCH}.${EXT}"
 URL="https://github.com/${REPO}/releases/download/v${VERSION}/${ASSET}"
+CHECKSUMS_URL="https://github.com/${REPO}/releases/download/v${VERSION}/checksums.txt"
 TMP="$(mktemp -d)"
 trap 'rm -rf "${TMP}"' EXIT
 
@@ -66,8 +108,18 @@ if ! curl -fsSL "${URL}" -o "${TMP}/${ASSET}"; then
   exit 1
 fi
 
+if [[ "${SKIP_CHECKSUM}" != "1" ]]; then
+  echo "Downloading ${CHECKSUMS_URL}"
+  if ! curl -fsSL "${CHECKSUMS_URL}" -o "${TMP}/checksums.txt"; then
+    echo "Failed to download checksums.txt for v${VERSION}." >&2
+    echo "Set SKIP_CHECKSUM=1 to bypass (not recommended)." >&2
+    exit 1
+  fi
+  verify_checksum "${ASSET}" "${TMP}/${ASSET}" "${TMP}/checksums.txt"
+fi
+
 mkdir -p "${INSTALL_DIR}"
-if [[ "${EXT}" == "zip" ]]; then
+if [[ "${EXT}" == "zip" ]; then
   if command -v unzip >/dev/null 2>&1; then
     unzip -qo "${TMP}/${ASSET}" -d "${TMP}/extract"
   else

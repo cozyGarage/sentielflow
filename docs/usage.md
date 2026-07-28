@@ -8,8 +8,10 @@ SentinelFlow is designed to be simple yet powerful. This guide covers the most c
 | --- | --- |
 | Source | `git clone https://github.com/cozyGarage/sentielflow && make build` |
 | Docker (local) | `docker build -t sentinelflow/sentinelflow:local .` |
-| Install script | `curl -fsSL https://raw.githubusercontent.com/cozyGarage/sentielflow/main/scripts/install.sh \| bash` (needs a published release) |
+| Install script | `curl -fsSL https://raw.githubusercontent.com/cozyGarage/sentielflow/main/scripts/install.sh \| bash` (needs a published release; verifies `checksums.txt`) |
 | Release binary | Download from [GitHub Releases](https://github.com/cozyGarage/sentielflow/releases) |
+
+`go install` is not supported until the module path matches the GitHub repo name (`sentinelflow` vs `sentielflow`). See [releasing.md](releasing.md).
 
 Docker one-liner (local image):
 
