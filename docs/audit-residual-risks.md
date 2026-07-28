@@ -14,7 +14,7 @@ Re-audit after correctness, delivery, and scanner-quality waves. Unit tests gree
 | AI scanner | Rejected at config/CLI | Planned; keep `enabled: false`. |
 | OSV / network | Partial dependency failures | Findings preserved + `ScannerRun.Error` fails CI — flaky network can red CI. |
 | Secrets git history | Requires local `git` | Errors surface; history depth still fixed/configurable via config only. |
-| Container delivery | Action `scan-container` needs `delivery: build` | Docker delivery path cannot run host Trivy. |
+| Container delivery | Action `scan-container` needs `delivery: build` | Docker delivery path cannot run host Trivy. `--all` does not enable container (CI dogfood stays Trivy-free). |
 | Policy vs IaC | Remaining Rego gaps | e.g. some workload kinds / stringly YAML edge cases may still diverge. |
 | Redaction | Heuristic, not cryptographic | Reporter + secrets redact patterns; novel secret formats may still leak in snippets. |
 
