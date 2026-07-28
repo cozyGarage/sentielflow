@@ -105,9 +105,16 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 
 	concurrency := types.EffectiveConcurrency(opts, s.config.Scanners.Secrets.Concurrency, 10)
 	var mu sync.Mutex
+	var scanErrs []string
 	types.RunWorkers(ctx, concurrency, scanFiles, func(filePath string) {
 		findings, err := s.scanFile(ctx, filePath, path)
-		if err != nil || len(findings) == 0 {
+		if err != nil {
+			mu.Lock()
+			scanErrs = append(scanErrs, fmt.Sprintf("%s: %v", filePath, err))
+			mu.Unlock()
+			return
+		}
+		if len(findings) == 0 {
 			return
 		}
 		mu.Lock()
@@ -117,11 +124,16 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 
 	if s.shouldScanGitHistory(path) {
 		historyFindings, err := s.scanGitHistory(ctx, path)
-		if err == nil {
+		if err != nil {
+			scanErrs = append(scanErrs, fmt.Sprintf("git history: %v", err))
+		} else {
 			result.Findings = append(result.Findings, historyFindings...)
 		}
 	}
 
+	if len(scanErrs) > 0 {
+		return result, fmt.Errorf("secrets scan errors (%d): %s", len(scanErrs), strings.Join(scanErrs, "; "))
+	}
 	return result, nil
 }
 

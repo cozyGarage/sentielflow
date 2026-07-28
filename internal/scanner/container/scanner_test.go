@@ -43,9 +43,9 @@ func TestParseSeverityViaAPI(t *testing.T) {
 	}
 }
 
-func TestScanSkipsWithoutTrivy(t *testing.T) {
+func TestScanErrorsWithoutTrivy(t *testing.T) {
 	if IsTrivyAvailable() {
-		t.Skip("trivy is installed, skipping skip test")
+		t.Skip("trivy is installed, skipping missing-trivy test")
 	}
 
 	s := NewScanner(&config.Config{
@@ -54,11 +54,26 @@ func TestScanSkipsWithoutTrivy(t *testing.T) {
 		},
 	})
 	result, err := s.Scan(context.Background(), ".", nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil {
+		t.Fatal("expected error when trivy is unavailable")
 	}
-	if !result.Skipped {
-		t.Error("expected scan to be skipped when trivy unavailable")
+	if result == nil {
+		t.Fatal("expected non-nil result alongside error")
+	}
+}
+
+func TestScanErrorsWithoutImage(t *testing.T) {
+	s := NewScanner(&config.Config{
+		Scanners: config.ScannersConfig{
+			Container: config.ContainerConfig{Image: ""},
+		},
+	})
+	result, err := s.Scan(context.Background(), t.TempDir(), nil)
+	if err == nil {
+		t.Fatal("expected error when no image is configured")
+	}
+	if result == nil {
+		t.Fatal("expected non-nil result alongside error")
 	}
 }
 

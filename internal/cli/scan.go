@@ -100,13 +100,12 @@ func runScan(cmd *cobra.Command, args []string) error {
 		cfg = config.Default()
 	}
 
-	if err := cfg.Validate(); err != nil {
-		return fmt.Errorf("invalid configuration: %w", err)
-	}
-
-	// Apply CLI flags to config
+	// Apply CLI flags to config, then normalize/validate (including --fail-on).
 	if err := applyScanFlags(cfg); err != nil {
 		return err
+	}
+	if err := cfg.Validate(); err != nil {
+		return fmt.Errorf("invalid configuration: %w", err)
 	}
 
 	// Prefer config reporting format unless --format was explicitly set
@@ -305,8 +304,9 @@ func printScanSummary(result *api.ScanResult) {
 func shouldFail(result *api.ScanResult, cfg *config.Config) bool {
 	counts := result.CountBySeverity()
 
-	if cfg.FailOn.Severity != "" {
-		switch cfg.FailOn.Severity {
+	threshold := strings.ToLower(strings.TrimSpace(cfg.FailOn.Severity))
+	if threshold != "" {
+		switch threshold {
 		case "critical":
 			if counts[api.SeverityCritical] > 0 {
 				return true
@@ -322,6 +322,10 @@ func shouldFail(result *api.ScanResult, cfg *config.Config) bool {
 		case "low":
 			if counts[api.SeverityCritical] > 0 || counts[api.SeverityHigh] > 0 ||
 				counts[api.SeverityMedium] > 0 || counts[api.SeverityLow] > 0 {
+				return true
+			}
+		case "info":
+			if len(result.Findings) > 0 {
 				return true
 			}
 		}

@@ -176,10 +176,10 @@ runs:
 
         if [ -f "$OUT_PATH" ]; then
           if [ "${{ inputs.format }}" = "json" ]; then
-            COUNT=$(grep -o '"severity"' "$OUT_PATH" | wc -l | tr -d ' ')
+            COUNT=$(bash "${{ github.action_path }}/scripts/count-findings.sh" json "$OUT_PATH")
             echo "findings-count=$COUNT" >> "$GITHUB_OUTPUT"
           elif [ "${{ inputs.format }}" = "sarif" ]; then
-            COUNT=$(grep -o '"ruleId"' "$OUT_PATH" | wc -l | tr -d ' ')
+            COUNT=$(bash "${{ github.action_path }}/scripts/count-findings.sh" sarif "$OUT_PATH")
             echo "findings-count=$COUNT" >> "$GITHUB_OUTPUT"
           else
             echo "findings-count=0" >> "$GITHUB_OUTPUT"

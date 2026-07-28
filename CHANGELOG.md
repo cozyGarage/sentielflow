@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `scanners.exclude` global path skip list (engine walk); secrets `allowlist` is secrets-only again
+- `scripts/count-findings.sh` for Action findings-count under `pipefail` (zero matches OK)
 - Visual demo README with screenshots, `examples/demo-project`, and `make demo` / `scripts/demo.sh`
 - `scripts/install.sh` one-liner installer for GitHub Release binaries
 - GitHub Action `delivery: docker` (default) and `delivery: build` (same-repo dogfood)
@@ -38,6 +40,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Engine/adapters preserve findings when scanners return `(result, err)` (partial deps/OSV, etc.)
+- Enabled container scans fail visibly when Trivy/image is missing (no silent 0 findings)
+- `fail_on.severity` / `--fail-on` normalized case-insensitively after CLI flags
+- Secrets/SAST/policy per-file and eval errors surface on `ScannerRun.Error`
+- Action findings-count no longer fails the job on clean (0-finding) JSON/SARIF reports
 - Repo self-scan skips `test/fixtures` samples; ignore OPA-indirect OTEL advisory until upstream bumps
 - Policy CLI docs use positional `policy test [policy] [input-file]` (not `--input`)
 - Action baseline description points at `.sentinelflow/baseline.yaml`

@@ -8,6 +8,20 @@ import (
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
 
+func TestShouldFailCaseInsensitive(t *testing.T) {
+	cfg := &config.Config{
+		FailOn: config.FailOnConfig{Severity: "HIGH"},
+	}
+	result := &api.ScanResult{
+		Findings: []api.Finding{
+			{Severity: api.SeverityHigh},
+		},
+	}
+	if !shouldFail(result, cfg) {
+		t.Fatal("expected HIGH threshold to match high findings")
+	}
+}
+
 func TestShouldFailChecksAllGates(t *testing.T) {
 	cfg := &config.Config{
 		FailOn: config.FailOnConfig{

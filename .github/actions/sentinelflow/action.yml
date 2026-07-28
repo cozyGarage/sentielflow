@@ -175,11 +175,12 @@ runs:
         echo "exit-code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
 
         if [ -f "$OUT_PATH" ]; then
+          COUNT_HELPER="${{ github.workspace }}/scripts/count-findings.sh"
           if [ "${{ inputs.format }}" = "json" ]; then
-            COUNT=$(grep -o '"severity"' "$OUT_PATH" | wc -l | tr -d ' ')
+            COUNT=$(bash "$COUNT_HELPER" json "$OUT_PATH")
             echo "findings-count=$COUNT" >> "$GITHUB_OUTPUT"
           elif [ "${{ inputs.format }}" = "sarif" ]; then
-            COUNT=$(grep -o '"ruleId"' "$OUT_PATH" | wc -l | tr -d ' ')
+            COUNT=$(bash "$COUNT_HELPER" sarif "$OUT_PATH")
             echo "findings-count=$COUNT" >> "$GITHUB_OUTPUT"
           else
             echo "findings-count=0" >> "$GITHUB_OUTPUT"

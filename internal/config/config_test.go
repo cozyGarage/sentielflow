@@ -27,3 +27,14 @@ func TestValidateAcceptsDefaults(t *testing.T) {
 		t.Fatalf("defaults should be valid: %v", err)
 	}
 }
+
+func TestValidateNormalizesFailOnSeverity(t *testing.T) {
+	cfg := Default()
+	cfg.FailOn.Severity = "HIGH"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected HIGH to validate: %v", err)
+	}
+	if cfg.FailOn.Severity != "high" {
+		t.Fatalf("expected normalized severity high, got %q", cfg.FailOn.Severity)
+	}
+}

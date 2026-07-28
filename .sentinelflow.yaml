@@ -1,12 +1,16 @@
 version: "1.0"
 
 scanners:
+  # Global path skips (all scanners / shared engine walk).
+  # Secrets-only noise belongs under scanners.secrets.allowlist.
+  exclude:
+    - "test/**"
+    - "examples/demo-project/**"
+    - "**/testdata/**"
+
   secrets:
     enabled: true
     allowlist:
-      - "test/**"
-      - "examples/demo-project/**"
-      - "**/testdata/**"
       - "**/*_test.go"
       - "**/*_bench_test.go"
       # Scanner implementations contain intentional pattern examples

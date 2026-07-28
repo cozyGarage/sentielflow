@@ -123,7 +123,10 @@ func (e *Engine) Scan(ctx context.Context, targetPath string) (*api.ScanResult, 
 
 			if err != nil {
 				run.Error = err.Error()
-			} else if scanResult != nil {
+			}
+			// Preserve findings even when the scanner also returns an error
+			// (e.g. partial OSV failures) so CI sees real issues + ScannerRun.Error.
+			if scanResult != nil {
 				run.FilesCount = scanResult.FilesCount
 				run.FindingsCount = len(scanResult.Findings)
 
@@ -206,7 +209,7 @@ func (e *Engine) collectFiles(ctx context.Context, targetPath string) ([]string,
 }
 
 func (e *Engine) shouldSkip(path string) bool {
-	return filter.ShouldSkip(path, e.config.Scanners.Secrets.Allowlist)
+	return filter.ShouldSkip(path, e.config.Scanners.Exclude)
 }
 
 func (e *Engine) collectGitMetadata(path string, meta *api.ScanMetadata) {
