@@ -40,6 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `--all` no longer enables container scanning (Trivy is opt-in via `--container`); restores CI dogfood without host Trivy
+- Self-scan excludes intentional scanner pattern sources via `scanners.exclude` (SAST no longer fails the repo gate)
 - Engine/adapters preserve findings when scanners return `(result, err)` (partial deps/OSV, etc.)
 - Enabled container scans fail visibly when Trivy/image is missing (no silent 0 findings)
 - `fail_on.severity` / `--fail-on` normalized case-insensitively after CLI flags

@@ -7,20 +7,21 @@ scanners:
     - "test/**"
     - "examples/demo-project/**"
     - "**/testdata/**"
+    # Scanner implementations embed intentional rule/pattern examples that would
+    # otherwise fail self-scan (SAST/secrets). Keep these out of the product walk.
+    - "internal/scanner/sast/scanner.go"
+    - "internal/scanner/secrets/scanner.go"
+    - "internal/scanner/secrets/patterns_test.go"
+    - "internal/scanner/policy/engine.go"
+    - "internal/scanner/container/scanner.go"
+    - "internal/scanner/dependencies/scanner.go"
+    - "internal/scanner/iac/dockerfile.go"
 
   secrets:
     enabled: true
     allowlist:
       - "**/*_test.go"
       - "**/*_bench_test.go"
-      # Scanner implementations contain intentional pattern examples
-      - "internal/scanner/sast/scanner.go"
-      - "internal/scanner/secrets/scanner.go"
-      - "internal/scanner/secrets/patterns_test.go"
-      - "internal/scanner/policy/engine.go"
-      - "internal/scanner/container/scanner.go"
-      - "internal/scanner/dependencies/scanner.go"
-      - "internal/scanner/iac/dockerfile.go"
 
   iac:
     enabled: true

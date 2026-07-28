@@ -42,7 +42,7 @@ Scan the current directory with all implemented scanners:
 sentinelflow scan --all .
 ```
 
-`--all` enables secrets, IaC, dependencies, SAST, container (when configured), and license scanning. It does **not** enable AI review — `--ai` / `scanners.ai.enabled` are rejected in this release (planned feature).
+`--all` enables secrets, IaC, dependencies, SAST, and license scanning. It does **not** enable container scanning (use `--container`, requires Trivy) or AI review (`--ai` / `scanners.ai.enabled` are rejected in this release).
 
 ## Selecting Scanners
 
