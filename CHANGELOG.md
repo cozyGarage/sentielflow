@@ -11,7 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Visual demo README with screenshots, `examples/demo-project`, and `make demo` / `scripts/demo.sh`
 - `scripts/install.sh` one-liner installer for GitHub Release binaries
-- GitHub Action `delivery: docker` mode to run the published image instead of compiling Go each job
+- GitHub Action `delivery: docker` (default) and `delivery: build` (same-repo dogfood)
+- Restyled HTML security reports (teal/slate product look; no purple gradient)
 - Shared `test/fixtures/` corpus for secrets, IaC, dependencies, and policy inputs (wired into unit tests)
 - Python dependency parsing for `pyproject.toml`, `poetry.lock`, and `Pipfile.lock` (in addition to `requirements.txt`)
 - Maven `pom.xml` dependency parsing with basic property resolution
@@ -20,10 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Primary install story is Docker / GitHub Releases / Action (source build remains for contributors)
+- Primary install story is clone/`make build` until the first `v*` release publishes binaries and Docker Hub tags
+- GoReleaser `project_name: sentinelflow` + lowercase `main.version` ldflags aligned with the CLI
+- Dockerfile accepts `ARG VERSION/COMMIT/DATE` and embeds them correctly
+- Repo CI dogfoods `./.github/actions/sentinelflow` with `delivery: build`
 - README assets compressed; CLI screenshot matches real demo output
 - `scan` suppresses cobra Usage on gate failures (`SilenceUsage`)
 - Makefile binary name is `sentinelflow` on Unix
+- `--format` help includes `html`
 - Unified AI rejection messaging for `--ai` / `scanners.ai.enabled`; CLI branding no longer advertises AI as shipped
 - Default IaC frameworks are terraform, kubernetes, and dockerfile only (CloudFormation documented as planned)
 - Engine shares collected files with secrets/SAST/IaC scanners (avoid re-walking trees)

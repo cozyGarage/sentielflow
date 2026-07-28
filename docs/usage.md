@@ -6,17 +6,17 @@ SentinelFlow is designed to be simple yet powerful. This guide covers the most c
 
 | Method | Command |
 | --- | --- |
-| Docker | `docker pull sentinelflow/sentinelflow:latest` |
-| Install script | `curl -fsSL https://raw.githubusercontent.com/cozyGarage/sentielflow/main/scripts/install.sh \| bash` |
+| Source | `git clone https://github.com/cozyGarage/sentielflow && make build` |
+| Docker (local) | `docker build -t sentinelflow/sentinelflow:local .` |
+| Install script | `curl -fsSL https://raw.githubusercontent.com/cozyGarage/sentielflow/main/scripts/install.sh \| bash` (needs a published release) |
 | Release binary | Download from [GitHub Releases](https://github.com/cozyGarage/sentielflow/releases) |
-| Go | `go install github.com/cozygarage/sentinelflow/cmd/sentinelflow@latest` |
-| Source | `make build` |
 
-Docker one-liner:
+Docker one-liner (local image):
 
 ```bash
+docker build -t sentinelflow/sentinelflow:local .
 docker run --rm -v "$PWD:/workspace" -w /workspace \
-  sentinelflow/sentinelflow:latest scan --all .
+  sentinelflow/sentinelflow:local scan --all .
 ```
 
 ## Demo

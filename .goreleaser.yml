@@ -1,6 +1,8 @@
 # GoReleaser configuration for automated releases
 version: 2
 
+project_name: sentinelflow
+
 before:
   hooks:
     - go mod tidy
@@ -20,9 +22,9 @@ builds:
       - arm64
     ldflags:
       - -s -w
-      - -X main.Version={{.Version}}
-      - -X main.Commit={{.Commit}}
-      - -X main.Date={{.Date}}
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
     main: ./cmd/sentinelflow
 
 archives:

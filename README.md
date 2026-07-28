@@ -56,18 +56,33 @@ Checked-in samples: [`docs/assets/demo/`](docs/assets/demo/).
 
 | Method | Best for | How |
 | --- | --- | --- |
-| **Docker** | CI & local tryouts | `docker pull sentinelflow/sentinelflow:latest` |
-| **Install script** | Laptops | `curl -fsSL https://raw.githubusercontent.com/cozyGarage/sentielflow/main/scripts/install.sh \| bash` |
-| **GitHub Action** | Pull requests | `delivery: docker` (see below) |
-| **Go install** | Go developers | `go install github.com/cozygarage/sentinelflow/cmd/sentinelflow@latest` |
-| **Source** | Contributors | `make build` |
+| **Clone + build** | Contributors / today | `git clone … && make build` |
+| **Docker** | CI & tryouts (after image publish) | `docker build -t sentinelflow/sentinelflow:local .` or pull a release tag |
+| **Install script** | Laptops (after first `v*` release) | `curl -fsSL …/scripts/install.sh \| bash` |
+| **GitHub Action** | Pull requests | `delivery: docker` (external) or `delivery: build` (this repo) |
+
+> Release binaries and Docker Hub tags are published by GoReleaser on `v*` tags. Until the first release, use **clone + `make build`** or **`docker build`**.
+
+### Build from source
+
+```bash
+git clone https://github.com/cozyGarage/sentielflow
+cd sentielflow
+make build
+./sentinelflow version
+```
 
 ### Docker
 
 ```bash
+# Local image from this repo
+docker build -t sentinelflow/sentinelflow:local .
 docker run --rm -v "$PWD:/workspace" -w /workspace \
-  sentinelflow/sentinelflow:latest \
+  sentinelflow/sentinelflow:local \
   scan --all --format sarif -o report.sarif
+
+# After a release is published
+docker pull sentinelflow/sentinelflow:latest
 ```
 
 Compose helpers: [`docker-compose.yml`](docker-compose.yml) (`scan-html`, `scan-sarif`, `scan-markdown`).
@@ -75,28 +90,35 @@ Compose helpers: [`docker-compose.yml`](docker-compose.yml) (`scan-html`, `scan-
 ### Release binary
 
 ```bash
-# Latest release → ./bin/sentinelflow
+# Requires a published GitHub Release
 curl -fsSL https://raw.githubusercontent.com/cozyGarage/sentielflow/main/scripts/install.sh | bash
 ./bin/sentinelflow version
-
-# Pin a version
-VERSION=1.0.0 curl -fsSL https://raw.githubusercontent.com/cozyGarage/sentielflow/main/scripts/install.sh | bash
 ```
 
-### GitHub Action (Docker delivery)
+### GitHub Action
+
+External repos (published image):
 
 ```yaml
 - uses: cozyGarage/sentielflow/.github/actions/sentinelflow@main
   with:
     delivery: docker
     image: sentinelflow/sentinelflow:latest
-    scan-all: 'true'
     fail-on: high
     format: sarif
     output: report.sarif
 ```
 
-`delivery: build` (default) compiles from source when you want bleeding-edge `main`.
+This repository (scan PR code):
+
+```yaml
+- uses: ./.github/actions/sentinelflow
+  with:
+    delivery: build
+    fail-on: high
+    format: sarif
+    output: report.sarif
+```
 
 ## Features
 
@@ -148,6 +170,7 @@ jobs:
       - uses: cozyGarage/sentielflow/.github/actions/sentinelflow@main
         with:
           delivery: docker
+          image: sentinelflow/sentinelflow:latest
           fail-on: high
           format: sarif
           output: report.sarif

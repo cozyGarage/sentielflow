@@ -1,6 +1,10 @@
 # Multi-stage build for minimal image size
 FROM golang:1.25.12-alpine AS builder
 
+ARG VERSION=dev
+ARG COMMIT=none
+ARG DATE=unknown
+
 # Install build dependencies
 RUN apk add --no-cache git ca-certificates
 
@@ -13,9 +17,9 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build the binary
+# Build the binary (ldflags must match cmd/sentinelflow var names)
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
-    -ldflags="-w -s -X main.Version=${VERSION:-dev}" \
+    -ldflags="-w -s -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE}" \
     -o sentinelflow \
     ./cmd/sentinelflow
 
@@ -57,5 +61,5 @@ CMD ["--help"]
 # Metadata
 LABEL org.opencontainers.image.title="SentinelFlow"
 LABEL org.opencontainers.image.description="CI/CD Security Gatekeeper"
-LABEL org.opencontainers.image.source="https://github.com/cozygarage/sentinelflow"
+LABEL org.opencontainers.image.source="https://github.com/cozyGarage/sentielflow"
 LABEL org.opencontainers.image.vendor="SentinelFlow"

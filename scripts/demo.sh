@@ -7,6 +7,11 @@ DEMO_DIR="${ROOT}/examples/demo-project"
 OUT_DIR="${ROOT}/demo-out"
 BIN="${ROOT}/sentinelflow"
 
+if [[ ! -d "${DEMO_DIR}" ]]; then
+  echo "Demo project missing: ${DEMO_DIR}" >&2
+  exit 1
+fi
+
 mkdir -p "${OUT_DIR}"
 
 if [[ ! -x "${BIN}" ]]; then
@@ -35,8 +40,14 @@ for fmt in markdown html sarif; do
   ext="${fmt}"
   [[ "${fmt}" == "markdown" ]] && ext="md"
   set +e
-  "${BIN}" scan --format "${fmt}" -o "${OUT_DIR}/report.${ext}" "${SCAN_ARGS[@]}" >/dev/null 2>&1
+  "${BIN}" scan --format "${fmt}" -o "${OUT_DIR}/report.${ext}" "${SCAN_ARGS[@]}" >/dev/null 2>"${OUT_DIR}/.${fmt}.err"
+  RC=$?
   set -e
+  if [[ ! -s "${OUT_DIR}/report.${ext}" ]]; then
+    echo "warning: failed to write report.${ext} (exit ${RC})" >&2
+    [[ -s "${OUT_DIR}/.${fmt}.err" ]] && sed -n '1,5p' "${OUT_DIR}/.${fmt}.err" >&2
+  fi
+  rm -f "${OUT_DIR}/.${fmt}.err"
 done
 
 echo ""

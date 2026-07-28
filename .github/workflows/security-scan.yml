@@ -37,11 +37,14 @@ jobs:
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
 
-      - name: Build SentinelFlow
-        run: go build -o sentinelflow ./cmd/sentinelflow
-
-      - name: Run security scan
-        run: ./sentinelflow scan --all --format sarif -o report.sarif --fail-on high
+      - name: Run SentinelFlow scan
+        uses: ./.github/actions/sentinelflow
+        with:
+          delivery: build
+          scan-all: 'true'
+          fail-on: high
+          format: sarif
+          output: report.sarif
 
       - name: Upload SARIF to GitHub Security
         if: always() && hashFiles('report.sarif') != ''
@@ -52,7 +55,7 @@ jobs:
           category: sentinelflow
 
       - name: Generate Markdown report
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && always()
         run: ./sentinelflow scan --all --format markdown -o report.md || true
 
       - name: Comment on pull request

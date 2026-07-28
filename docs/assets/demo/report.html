@@ -5,48 +5,191 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SentinelFlow Security Report</title>
     <style>
+        :root {
+            --bg: #f4f7f8;
+            --surface: #ffffff;
+            --ink: #0f1c24;
+            --muted: #5b6b75;
+            --line: #d7e0e6;
+            --accent: #0e7490;
+            --accent-soft: #ecfeff;
+            --critical: #b91c1c;
+            --critical-bg: #fef2f2;
+            --high: #c2410c;
+            --high-bg: #fff7ed;
+            --medium: #a16207;
+            --medium-bg: #fefce8;
+            --low: #1d4ed8;
+            --low-bg: #eff6ff;
+            --ok: #166534;
+            --ok-bg: #f0fdf4;
+            --code-bg: #0b1220;
+            --code-fg: #d1d5db;
+        }
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background: #f5f7fa; padding: 20px; }
-        .container { max-width: 1200px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 8px 8px 0 0; }
-        .header h1 { font-size: 28px; margin-bottom: 10px; }
-        .header p { opacity: 0.9; }
-        .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; padding: 30px; background: #f8f9fa; }
-        .summary-card { background: white; padding: 20px; border-radius: 6px; border-left: 4px solid #667eea; }
-        .summary-card h3 { color: #666; font-size: 14px; margin-bottom: 8px; font-weight: 500; }
-        .summary-card .value { font-size: 32px; font-weight: bold; color: #333; }
-        .severity-badges { padding: 20px 30px; display: flex; gap: 15px; flex-wrap: wrap; }
-        .badge { padding: 8px 16px; border-radius: 20px; font-weight: 600; font-size: 14px; }
-        .badge-critical { background: #fee; color: #c00; }
-        .badge-high { background: #fff3e0; color: #e65100; }
-        .badge-medium { background: #fff8e1; color: #f57f17; }
-        .badge-low { background: #e3f2fd; color: #1565c0; }
-        .badge-info { background: #f5f5f5; color: #666; }
-        .findings { padding: 30px; }
-        .finding { background: #f8f9fa; border-left: 4px solid #ddd; padding: 20px; margin-bottom: 15px; border-radius: 4px; }
-        .finding.critical { border-left-color: #c00; }
-        .finding.high { border-left-color: #e65100; }
-        .finding.medium { border-left-color: #f57f17; }
-        .finding.low { border-left-color: #1565c0; }
-        .finding-header { display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px; }
-        .finding-title { font-size: 18px; font-weight: 600; color: #333; }
-        .finding-severity { padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; }
-        .finding-meta { color: #666; font-size: 14px; margin-bottom: 12px; }
-        .finding-desc { color: #444; line-height: 1.6; margin-bottom: 12px; }
-        .finding-remediation { background: #e8f5e9; border-left: 3px solid #4caf50; padding: 12px; border-radius: 4px; margin-top: 12px; }
-        .finding-remediation strong { color: #2e7d32; }
-        .code-snippet { background: #282c34; color: #abb2bf; padding: 15px; border-radius: 4px; overflow-x: auto; font-family: 'Consolas', monospace; font-size: 13px; margin-top: 12px; }
-        .footer { text-align: center; padding: 20px; color: #999; font-size: 14px; border-top: 1px solid #eee; }
-        .no-findings { text-align: center; padding: 60px 30px; color: #666; }
-        .no-findings svg { width: 80px; height: 80px; margin-bottom: 20px; }
+        body {
+            font-family: "IBM Plex Sans", "Segoe UI", Helvetica, Arial, sans-serif;
+            background:
+                radial-gradient(circle at top left, rgba(14,116,144,0.08), transparent 28%),
+                linear-gradient(180deg, #eef4f6 0%, var(--bg) 100%);
+            color: var(--ink);
+            padding: 28px 16px 48px;
+            line-height: 1.5;
+        }
+        .container {
+            max-width: 1080px;
+            margin: 0 auto;
+            background: var(--surface);
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            overflow: hidden;
+            box-shadow: 0 18px 40px rgba(15, 28, 36, 0.08);
+        }
+        .header {
+            padding: 32px 36px;
+            background:
+                linear-gradient(135deg, rgba(14,116,144,0.12), transparent 42%),
+                linear-gradient(180deg, #0b1220 0%, #132533 100%);
+            color: #f8fafc;
+        }
+        .header .eyebrow {
+            display: inline-block;
+            font-size: 12px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #67e8f9;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        .header h1 {
+            font-family: "IBM Plex Serif", Georgia, "Times New Roman", serif;
+            font-size: 32px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .header p { color: #cbd5e1; font-size: 15px; }
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 14px;
+            padding: 24px 36px;
+            background: #f8fbfc;
+            border-bottom: 1px solid var(--line);
+        }
+        .summary-card {
+            background: var(--surface);
+            padding: 18px 18px 16px;
+            border: 1px solid var(--line);
+            border-radius: 12px;
+        }
+        .summary-card h3 {
+            color: var(--muted);
+            font-size: 12px;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+        .summary-card .value {
+            font-size: 30px;
+            font-weight: 700;
+            color: var(--ink);
+            font-variant-numeric: tabular-nums;
+        }
+        .severity-badges {
+            padding: 18px 36px 0;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .badge {
+            padding: 6px 12px;
+            border-radius: 999px;
+            font-weight: 650;
+            font-size: 13px;
+            border: 1px solid transparent;
+        }
+        .badge-critical { background: var(--critical-bg); color: var(--critical); border-color: #fecaca; }
+        .badge-high { background: var(--high-bg); color: var(--high); border-color: #fed7aa; }
+        .badge-medium { background: var(--medium-bg); color: var(--medium); border-color: #fde68a; }
+        .badge-low { background: var(--low-bg); color: var(--low); border-color: #bfdbfe; }
+        .badge-info { background: #f8fafc; color: var(--muted); border-color: var(--line); }
+        .findings { padding: 24px 36px 36px; }
+        .finding {
+            background: #fbfdfe;
+            border: 1px solid var(--line);
+            border-left: 4px solid #94a3b8;
+            padding: 18px 18px 16px;
+            margin-bottom: 14px;
+            border-radius: 12px;
+        }
+        .finding.critical { border-left-color: var(--critical); }
+        .finding.high { border-left-color: var(--high); }
+        .finding.medium { border-left-color: var(--medium); }
+        .finding.low { border-left-color: var(--low); }
+        .finding-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            gap: 12px;
+            margin-bottom: 10px;
+        }
+        .finding-title { font-size: 17px; font-weight: 650; color: var(--ink); }
+        .finding-severity { padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; }
+        .finding-meta { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
+        .finding-meta code {
+            font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+            font-size: 12px;
+            background: var(--accent-soft);
+            color: var(--accent);
+            padding: 2px 6px;
+            border-radius: 6px;
+        }
+        .finding-desc { color: #334155; margin-bottom: 10px; }
+        .finding-remediation {
+            background: var(--ok-bg);
+            border: 1px solid #bbf7d0;
+            padding: 12px 14px;
+            border-radius: 10px;
+            margin-top: 12px;
+            color: #14532d;
+        }
+        .finding-remediation strong { color: var(--ok); }
+        .code-snippet {
+            background: var(--code-bg);
+            color: var(--code-fg);
+            padding: 14px 16px;
+            border-radius: 10px;
+            overflow-x: auto;
+            font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+            font-size: 12.5px;
+            margin-top: 12px;
+            line-height: 1.55;
+        }
+        .footer {
+            text-align: center;
+            padding: 18px 20px;
+            color: var(--muted);
+            font-size: 13px;
+            border-top: 1px solid var(--line);
+            background: #f8fbfc;
+        }
+        .no-findings { text-align: center; padding: 64px 30px; color: var(--muted); }
+        .no-findings h2 { color: var(--ink); margin-bottom: 8px; }
+        @media (max-width: 720px) {
+            .header, .summary, .findings, .severity-badges { padding-left: 18px; padding-right: 18px; }
+            .header h1 { font-size: 26px; }
+            .finding-header { flex-direction: column; }
+        }
     </style>
 </head>
 <body>
     <div class="container">
 
         <div class="header">
-            <h1>🛡️ SentinelFlow Security Report</h1>
-            <p>Target: /workspace/examples/demo-project | Duration: 4ms</p>
+            <div class="eyebrow">SentinelFlow</div>
+            <h1>Security Report</h1>
+            <p>Target: /workspace/examples/demo-project · Duration: 4ms</p>
         </div>
 
         <div class="summary">
@@ -63,9 +206,9 @@
                 <div class="value">14</div>
             </div>
         </div>
-<div class="severity-badges"><span class="badge badge-critical">🔴 Critical: 17</span><span class="badge badge-high">🟠 High: 4</span><span class="badge badge-medium">🟡 Medium: 2</span></div><div class="findings"><div class="finding critical"><div class="finding-header"><div class="finding-title">Privileged Container Detected</div><span class="finding-severity badge badge-critical">CRITICAL</span></div><div class="finding-meta">📁 iac/k8s/privileged-pod.yaml:0 | 🔖 iac</div><div class="finding-desc">Container &#34;app&#34; is running in privileged mode, which grants all capabilities</div><pre class="code-snippet">privileged: true</pre><div class="finding-remediation"><strong>💡 Remediation:</strong> Remove privileged flag or use specific capabilities instead</div></div><div class="finding critical"><div class="finding-header"><div class="finding-title">S3 Bucket with Public ACL</div><span class="finding-severity badge badge-critical">CRITICAL</span></div><div class="finding-meta">📁 iac/terraform/bad-s3.tf:1 | 🔖 iac</div><div class="finding-desc">S3 bucket &#34;public_assets&#34; has public ACL &#34;public-read&#34;</div><pre class="code-snippet">resource &#34;aws_s3_bucket&#34; &#34;public_assets&#34;</pre><div class="finding-remediation"><strong>💡 Remediation:</strong> Set ACL to &#39;private&#39; and use bucket policies for controlled access</div></div><div class="finding critical"><div class="finding-header"><div class="finding-title">Potential GitHub Token detected</div><span class="finding-severity badge badge-critical">CRITICAL</span></div><div class="finding-meta">📁 secrets/leaked_tokens.env:3 | 🔖 secrets</div><div class="finding-desc">GitHub personal access token or OAuth token found</div><pre class="code-snippet">GITHUB_TOKEN=***REDACTED***</pre><div class="finding-remediation"><strong>💡 Remediation:</strong> Remove the GitHub token from code. Use GitHub Actions secrets or environment variables. Revoke and regenerate the token.</div></div><div class="finding critical"><div class="finding-header"><div class="finding-title">Policy Violation: no-privileged-containers</div><span class="finding-severity badge badge-critical">CRITICAL</span></div><div class="finding-meta">📁 iac/k8s/privileged-pod.yaml:0 | 🔖 policy</div><div class="finding-desc">Container &#39;app&#39; is running in privileged mode</div></div><div class="finding critical"><div class="finding-header"><div class="finding-title">Policy Violation: no-privileged-containers</div><span class="finding-severity badge badge-critical">CRITICAL</span></div><div class="finding-meta">📁 iac/k8s/privileged-pod.yaml:0 | 🔖 policy</div><div class="finding-desc">Container &#39;app&#39; is not enforcing runAsNonRoot</div></div><div class="finding critical"><div class="finding-header"><div class="finding-title">Policy Violation: no-privileged-containers</div><span class="finding-severity badge badge-critical">CRITICAL</span></div><div class="finding-meta">📁 iac/k8s/privileged-pod.yaml:0 | 🔖 policy</div><div class="finding-desc">CronJob</div></div><div class="finding critical"><div class="finding-header"><div class="finding-title">Policy Violation: no-privileged-containers</div><span class="finding-severity badge badge-critical">CRITICAL</span></div><div class="finding-meta">📁 iac/k8s/privileged-pod.yaml:0 | 🔖 policy</div><div class="finding-desc">DaemonSet</div></div><div class="finding critical"><div class="finding-header"><div class="finding-title">Policy Violation: no-privileged-containers</div><span class="finding-severity badge badge-critical">CRITICAL</span></div><div class="finding-meta">📁 iac/k8s/privileged-pod.yaml:0 | 🔖 policy</div><div class="finding-desc">Deployment</div></div><div class="finding critical"><div class="finding-header"><div class="finding-title">Policy Violation: no-privileged-containers</div><span class="finding-severity badge badge-critical">CRITICAL</span></div><div class="finding-meta">📁 iac/k8s/privileged-pod.yaml:0 | 🔖 policy</div><div class="finding-desc">Job</div></div><div class="finding critical"><div class="finding-header"><div class="finding-title">Policy Violation: no-privileged-containers</div><span class="finding-severity badge badge-critical">CRITICAL</span></div><div class="finding-meta">📁 iac/k8s/privileged-pod.yaml:0 | 🔖 policy</div><div class="finding-desc">StatefulSet</div></div><div class="finding critical"><div class="finding-header"><div class="finding-title">Policy Violation: no-public-s3-buckets</div><span class="finding-severity badge badge-critical">CRITICAL</span></div><div class="finding-meta">📁 /workspace/examples/demo-project:0 | 🔖 policy</div><div class="finding-desc">S3 bucket &#39;public_assets&#39; has public-read ACL</div></div><div class="finding critical"><div class="finding-header"><div class="finding-title">Policy Violation: no-public-s3-buckets</div><span class="finding-severity badge badge-critical">CRITICAL</span></div><div class="finding-meta">📁 /workspace/examples/demo-project:0 | 🔖 policy</div><div class="finding-desc">S3 bucket &#39;public_assets&#39; is missing public access block configuration</div></div><div class="finding critical"><div class="finding-header"><div class="finding-title">Policy Violation: no-privileged-containers</div><span class="finding-severity badge badge-critical">CRITICAL</span></div><div class="finding-meta">📁 /workspace/examples/demo-project:0 | 🔖 policy</div><div class="finding-desc">CronJob</div></div><div class="finding critical"><div class="finding-header"><div class="finding-title">Policy Violation: no-privileged-containers</div><span class="finding-severity badge badge-critical">CRITICAL</span></div><div class="finding-meta">📁 /workspace/examples/demo-project:0 | 🔖 policy</div><div class="finding-desc">DaemonSet</div></div><div class="finding critical"><div class="finding-header"><div class="finding-title">Policy Violation: no-privileged-containers</div><span class="finding-severity badge badge-critical">CRITICAL</span></div><div class="finding-meta">📁 /workspace/examples/demo-project:0 | 🔖 policy</div><div class="finding-desc">Deployment</div></div><div class="finding critical"><div class="finding-header"><div class="finding-title">Policy Violation: no-privileged-containers</div><span class="finding-severity badge badge-critical">CRITICAL</span></div><div class="finding-meta">📁 /workspace/examples/demo-project:0 | 🔖 policy</div><div class="finding-desc">Job</div></div><div class="finding critical"><div class="finding-header"><div class="finding-title">Policy Violation: no-privileged-containers</div><span class="finding-severity badge badge-critical">CRITICAL</span></div><div class="finding-meta">📁 /workspace/examples/demo-project:0 | 🔖 policy</div><div class="finding-desc">StatefulSet</div></div><div class="finding high"><div class="finding-header"><div class="finding-title">Explicit Root User</div><span class="finding-severity badge badge-high">HIGH</span></div><div class="finding-meta">📁 iac/docker/Dockerfile.bad:3 | 🔖 iac</div><div class="finding-desc">Dockerfile explicitly sets USER to root</div><pre class="code-snippet">USER root</pre><div class="finding-remediation"><strong>💡 Remediation:</strong> Use a non-root user instead</div></div><div class="finding high"><div class="finding-header"><div class="finding-title">Missing USER Instruction</div><span class="finding-severity badge badge-high">HIGH</span></div><div class="finding-meta">📁 iac/docker/Dockerfile.bad:4 | 🔖 iac</div><div class="finding-desc">Final image stage does not switch to a non-root user</div><div class="finding-remediation"><strong>💡 Remediation:</strong> Add USER instruction to run container as non-root user in the final stage</div></div><div class="finding high"><div class="finding-header"><div class="finding-title">S3 Bucket Without Encryption</div><span class="finding-severity badge badge-high">HIGH</span></div><div class="finding-meta">📁 iac/terraform/bad-s3.tf:1 | 🔖 iac</div><div class="finding-desc">S3 bucket &#34;public_assets&#34; does not have server-side encryption enabled</div><pre class="code-snippet">resource &#34;aws_s3_bucket&#34; &#34;public_assets&#34;</pre><div class="finding-remediation"><strong>💡 Remediation:</strong> Enable server-side encryption with KMS or AES256</div></div><div class="finding high"><div class="finding-header"><div class="finding-title">S3 Public Access Block Disabled</div><span class="finding-severity badge badge-high">HIGH</span></div><div class="finding-meta">📁 iac/terraform/bad-s3.tf:1 | 🔖 iac</div><div class="finding-desc">S3 bucket &#34;public_assets&#34; is missing public access block configuration</div><pre class="code-snippet">resource &#34;aws_s3_bucket&#34; &#34;public_assets&#34;</pre><div class="finding-remediation"><strong>💡 Remediation:</strong> Add aws_s3_bucket_public_access_block resource to prevent public access</div></div><div class="finding medium"><div class="finding-header"><div class="finding-title">runAsNonRoot Not Enforced</div><span class="finding-severity badge badge-medium">MEDIUM</span></div><div class="finding-meta">📁 iac/k8s/privileged-pod.yaml:0 | 🔖 iac</div><div class="finding-desc">Container &#34;app&#34; does not enforce running as non-root user</div><pre class="code-snippet">securityContext</pre><div class="finding-remediation"><strong>💡 Remediation:</strong> Set runAsNonRoot: true in pod or container securityContext</div></div><div class="finding medium"><div class="finding-header"><div class="finding-title">Using &#39;latest&#39; Image Tag</div><span class="finding-severity badge badge-medium">MEDIUM</span></div><div class="finding-meta">📁 iac/k8s/privileged-pod.yaml:0 | 🔖 iac</div><div class="finding-desc">Container uses &#39;latest&#39; or no tag, which can lead to unpredictable deployments</div><pre class="code-snippet">image: nginx:latest</pre><div class="finding-remediation"><strong>💡 Remediation:</strong> Use specific image tags or digests</div></div></div>
+<div class="severity-badges"><span class="badge badge-critical">Critical: 17</span><span class="badge badge-high">High: 4</span><span class="badge badge-medium">Medium: 2</span></div><div class="findings"><div class="finding critical"><div class="finding-header"><div class="finding-title">S3 Bucket with Public ACL</div><span class="finding-severity badge badge-critical">CRITICAL</span></div><div class="finding-meta"><code>iac/terraform/bad-s3.tf:1</code> · scanner <code>iac</code> · rule <code>aws-s3-public-acl</code></div><div class="finding-desc">S3 bucket &#34;public_assets&#34; has public ACL &#34;public-read&#34;</div><pre class="code-snippet">resource &#34;aws_s3_bucket&#34; &#34;public_assets&#34;</pre><div class="finding-remediation"><strong>Remediation:</strong> Set ACL to &#39;private&#39; and use bucket policies for controlled access</div></div><div class="finding critical"><div class="finding-header"><div class="finding-title">Privileged Container Detected</div><span class="finding-severity badge badge-critical">CRITICAL</span></div><div class="finding-meta"><code>iac/k8s/privileged-pod.yaml:0</code> · scanner <code>iac</code> · rule <code>k8s-privileged</code></div><div class="finding-desc">Container &#34;app&#34; is running in privileged mode, which grants all capabilities</div><pre class="code-snippet">privileged: true</pre><div class="finding-remediation"><strong>Remediation:</strong> Remove privileged flag or use specific capabilities instead</div></div><div class="finding critical"><div class="finding-header"><div class="finding-title">Potential GitHub Token detected</div><span class="finding-severity badge badge-critical">CRITICAL</span></div><div class="finding-meta"><code>secrets/leaked_tokens.env:3</code> · scanner <code>secrets</code> · rule <code>github-token</code></div><div class="finding-desc">GitHub personal access token or OAuth token found</div><pre class="code-snippet">GITHUB_TOKEN=***REDACTED***</pre><div class="finding-remediation"><strong>Remediation:</strong> Remove the GitHub token from code. Use GitHub Actions secrets or environment variables. Revoke and regenerate the token.</div></div><div class="finding critical"><div class="finding-header"><div class="finding-title">Policy Violation: no-privileged-containers</div><span class="finding-severity badge badge-critical">CRITICAL</span></div><div class="finding-meta"><code>iac/k8s/privileged-pod.yaml:0</code> · scanner <code>policy</code> · rule <code>no-privileged-containers</code></div><div class="finding-desc">Container &#39;app&#39; is running in privileged mode</div></div><div class="finding critical"><div class="finding-header"><div class="finding-title">Policy Violation: no-privileged-containers</div><span class="finding-severity badge badge-critical">CRITICAL</span></div><div class="finding-meta"><code>iac/k8s/privileged-pod.yaml:0</code> · scanner <code>policy</code> · rule <code>no-privileged-containers</code></div><div class="finding-desc">Container &#39;app&#39; is not enforcing runAsNonRoot</div></div><div class="finding critical"><div class="finding-header"><div class="finding-title">Policy Violation: no-privileged-containers</div><span class="finding-severity badge badge-critical">CRITICAL</span></div><div class="finding-meta"><code>iac/k8s/privileged-pod.yaml:0</code> · scanner <code>policy</code> · rule <code>no-privileged-containers</code></div><div class="finding-desc">CronJob</div></div><div class="finding critical"><div class="finding-header"><div class="finding-title">Policy Violation: no-privileged-containers</div><span class="finding-severity badge badge-critical">CRITICAL</span></div><div class="finding-meta"><code>iac/k8s/privileged-pod.yaml:0</code> · scanner <code>policy</code> · rule <code>no-privileged-containers</code></div><div class="finding-desc">DaemonSet</div></div><div class="finding critical"><div class="finding-header"><div class="finding-title">Policy Violation: no-privileged-containers</div><span class="finding-severity badge badge-critical">CRITICAL</span></div><div class="finding-meta"><code>iac/k8s/privileged-pod.yaml:0</code> · scanner <code>policy</code> · rule <code>no-privileged-containers</code></div><div class="finding-desc">Deployment</div></div><div class="finding critical"><div class="finding-header"><div class="finding-title">Policy Violation: no-privileged-containers</div><span class="finding-severity badge badge-critical">CRITICAL</span></div><div class="finding-meta"><code>iac/k8s/privileged-pod.yaml:0</code> · scanner <code>policy</code> · rule <code>no-privileged-containers</code></div><div class="finding-desc">Job</div></div><div class="finding critical"><div class="finding-header"><div class="finding-title">Policy Violation: no-privileged-containers</div><span class="finding-severity badge badge-critical">CRITICAL</span></div><div class="finding-meta"><code>iac/k8s/privileged-pod.yaml:0</code> · scanner <code>policy</code> · rule <code>no-privileged-containers</code></div><div class="finding-desc">StatefulSet</div></div><div class="finding critical"><div class="finding-header"><div class="finding-title">Policy Violation: no-public-s3-buckets</div><span class="finding-severity badge badge-critical">CRITICAL</span></div><div class="finding-meta"><code>/workspace/examples/demo-project:0</code> · scanner <code>policy</code> · rule <code>no-public-s3-buckets</code></div><div class="finding-desc">S3 bucket &#39;public_assets&#39; has public-read ACL</div></div><div class="finding critical"><div class="finding-header"><div class="finding-title">Policy Violation: no-public-s3-buckets</div><span class="finding-severity badge badge-critical">CRITICAL</span></div><div class="finding-meta"><code>/workspace/examples/demo-project:0</code> · scanner <code>policy</code> · rule <code>no-public-s3-buckets</code></div><div class="finding-desc">S3 bucket &#39;public_assets&#39; is missing public access block configuration</div></div><div class="finding critical"><div class="finding-header"><div class="finding-title">Policy Violation: no-privileged-containers</div><span class="finding-severity badge badge-critical">CRITICAL</span></div><div class="finding-meta"><code>/workspace/examples/demo-project:0</code> · scanner <code>policy</code> · rule <code>no-privileged-containers</code></div><div class="finding-desc">CronJob</div></div><div class="finding critical"><div class="finding-header"><div class="finding-title">Policy Violation: no-privileged-containers</div><span class="finding-severity badge badge-critical">CRITICAL</span></div><div class="finding-meta"><code>/workspace/examples/demo-project:0</code> · scanner <code>policy</code> · rule <code>no-privileged-containers</code></div><div class="finding-desc">DaemonSet</div></div><div class="finding critical"><div class="finding-header"><div class="finding-title">Policy Violation: no-privileged-containers</div><span class="finding-severity badge badge-critical">CRITICAL</span></div><div class="finding-meta"><code>/workspace/examples/demo-project:0</code> · scanner <code>policy</code> · rule <code>no-privileged-containers</code></div><div class="finding-desc">Deployment</div></div><div class="finding critical"><div class="finding-header"><div class="finding-title">Policy Violation: no-privileged-containers</div><span class="finding-severity badge badge-critical">CRITICAL</span></div><div class="finding-meta"><code>/workspace/examples/demo-project:0</code> · scanner <code>policy</code> · rule <code>no-privileged-containers</code></div><div class="finding-desc">Job</div></div><div class="finding critical"><div class="finding-header"><div class="finding-title">Policy Violation: no-privileged-containers</div><span class="finding-severity badge badge-critical">CRITICAL</span></div><div class="finding-meta"><code>/workspace/examples/demo-project:0</code> · scanner <code>policy</code> · rule <code>no-privileged-containers</code></div><div class="finding-desc">StatefulSet</div></div><div class="finding high"><div class="finding-header"><div class="finding-title">S3 Bucket Without Encryption</div><span class="finding-severity badge badge-high">HIGH</span></div><div class="finding-meta"><code>iac/terraform/bad-s3.tf:1</code> · scanner <code>iac</code> · rule <code>aws-s3-no-encryption</code></div><div class="finding-desc">S3 bucket &#34;public_assets&#34; does not have server-side encryption enabled</div><pre class="code-snippet">resource &#34;aws_s3_bucket&#34; &#34;public_assets&#34;</pre><div class="finding-remediation"><strong>Remediation:</strong> Enable server-side encryption with KMS or AES256</div></div><div class="finding high"><div class="finding-header"><div class="finding-title">S3 Public Access Block Disabled</div><span class="finding-severity badge badge-high">HIGH</span></div><div class="finding-meta"><code>iac/terraform/bad-s3.tf:1</code> · scanner <code>iac</code> · rule <code>aws-s3-public-block-disabled</code></div><div class="finding-desc">S3 bucket &#34;public_assets&#34; is missing public access block configuration</div><pre class="code-snippet">resource &#34;aws_s3_bucket&#34; &#34;public_assets&#34;</pre><div class="finding-remediation"><strong>Remediation:</strong> Add aws_s3_bucket_public_access_block resource to prevent public access</div></div><div class="finding high"><div class="finding-header"><div class="finding-title">Explicit Root User</div><span class="finding-severity badge badge-high">HIGH</span></div><div class="finding-meta"><code>iac/docker/Dockerfile.bad:3</code> · scanner <code>iac</code> · rule <code>user-root</code></div><div class="finding-desc">Dockerfile explicitly sets USER to root</div><pre class="code-snippet">USER root</pre><div class="finding-remediation"><strong>Remediation:</strong> Use a non-root user instead</div></div><div class="finding high"><div class="finding-header"><div class="finding-title">Missing USER Instruction</div><span class="finding-severity badge badge-high">HIGH</span></div><div class="finding-meta"><code>iac/docker/Dockerfile.bad:4</code> · scanner <code>iac</code> · rule <code>missing-user</code></div><div class="finding-desc">Final image stage does not switch to a non-root user</div><div class="finding-remediation"><strong>Remediation:</strong> Add USER instruction to run container as non-root user in the final stage</div></div><div class="finding medium"><div class="finding-header"><div class="finding-title">runAsNonRoot Not Enforced</div><span class="finding-severity badge badge-medium">MEDIUM</span></div><div class="finding-meta"><code>iac/k8s/privileged-pod.yaml:0</code> · scanner <code>iac</code> · rule <code>k8s-run-as-non-root</code></div><div class="finding-desc">Container &#34;app&#34; does not enforce running as non-root user</div><pre class="code-snippet">securityContext</pre><div class="finding-remediation"><strong>Remediation:</strong> Set runAsNonRoot: true in pod or container securityContext</div></div><div class="finding medium"><div class="finding-header"><div class="finding-title">Using &#39;latest&#39; Image Tag</div><span class="finding-severity badge badge-medium">MEDIUM</span></div><div class="finding-meta"><code>iac/k8s/privileged-pod.yaml:0</code> · scanner <code>iac</code> · rule <code>k8s-latest-tag</code></div><div class="finding-desc">Container uses &#39;latest&#39; or no tag, which can lead to unpredictable deployments</div><pre class="code-snippet">image: nginx:latest</pre><div class="finding-remediation"><strong>Remediation:</strong> Use specific image tags or digests</div></div></div>
         <div class="footer">
-            Generated by SentinelFlow 1.0.0 at 2026-07-28 00:50:53
+            Generated by SentinelFlow 1.0.0 · 2026-07-28 01:09:30
         </div>
     </div>
 </body>
