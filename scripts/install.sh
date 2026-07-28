@@ -27,12 +27,26 @@ detect_arch() {
 }
 
 if [[ -z "${VERSION}" ]]; then
-  VERSION="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
-    | sed -n 's/.*"tag_name":[[:space:]]*"v\?\([^"]*\)".*/\1/p' \
+  if ! RELEASE_JSON="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null)"; then
+    RELEASE_JSON=""
+  fi
+  VERSION="$(printf '%s' "${RELEASE_JSON}" \
+    | sed -n 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' \
     | head -n1)"
 fi
-if [[ -z "${VERSION}" ]]; then
-  echo "Could not resolve latest release version. Set VERSION=x.y.z" >&2
+
+# Normalize: allow VERSION=v1.0.0 or 1.0.0
+VERSION="${VERSION#v}"
+
+if [[ -z "${VERSION}" || "${VERSION}" == "null" ]]; then
+  cat >&2 <<'EOF'
+No GitHub Release found yet.
+
+Until a v* tag is published:
+  git clone https://github.com/cozyGarage/sentielflow
+  cd sentielflow && make build
+  # or: docker build -t sentinelflow/sentinelflow:local .
+EOF
   exit 1
 fi
 
@@ -47,7 +61,10 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "${TMP}"' EXIT
 
 echo "Downloading ${URL}"
-curl -fsSL "${URL}" -o "${TMP}/${ASSET}"
+if ! curl -fsSL "${URL}" -o "${TMP}/${ASSET}"; then
+  echo "Download failed. Check that release v${VERSION} exists and includes ${ASSET}." >&2
+  exit 1
+fi
 
 mkdir -p "${INSTALL_DIR}"
 if [[ "${EXT}" == "zip" ]]; then

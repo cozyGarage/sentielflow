@@ -8,9 +8,9 @@ branding:
 
 inputs:
   delivery:
-    description: How to obtain SentinelFlow — build (compile from source) or docker (pull image)
+    description: How to obtain SentinelFlow — docker (pull image, recommended) or build (compile from caller workspace; same-repo only)
     required: false
-    default: build
+    default: docker
   image:
     description: Container image when delivery=docker
     required: false
@@ -80,29 +80,41 @@ runs:
   using: composite
   steps:
     - name: Setup Go
-      if: inputs.delivery != 'docker'
+      if: inputs.delivery == 'build'
       uses: actions/setup-go@v5
       with:
         go-version-file: go.mod
 
     - name: Build SentinelFlow
-      if: inputs.delivery != 'docker'
+      if: inputs.delivery == 'build'
       shell: bash
       working-directory: ${{ github.workspace }}
       run: |
+        if [ ! -f go.mod ] || [ ! -d cmd/sentinelflow ]; then
+          echo "delivery=build requires the SentinelFlow source tree in the workspace (same-repo dogfood)." >&2
+          echo "For external repos use delivery=docker with image: sentinelflow/sentinelflow:<tag>." >&2
+          exit 1
+        fi
         go build -o sentinelflow ./cmd/sentinelflow
         ./sentinelflow version
 
     - name: Pull SentinelFlow image
-      if: inputs.delivery == 'docker'
+      if: inputs.delivery != 'build'
       shell: bash
       run: |
         docker pull "${{ inputs.image }}"
         docker run --rm "${{ inputs.image }}" version
 
     - name: Install Trivy
-      if: inputs.scan-container == 'true'
+      if: inputs.scan-container == 'true' && inputs.delivery == 'build'
       uses: aquasecurity/setup-trivy@v0.3.1
+
+    - name: Guard container+docker delivery
+      if: inputs.scan-container == 'true' && inputs.delivery != 'build'
+      shell: bash
+      run: |
+        echo "scan-container requires delivery=build (Trivy runs on the host binary path)." >&2
+        exit 1
 
     - name: Run security scan
       id: scan
@@ -140,7 +152,14 @@ runs:
         fi
 
         set +e
-        if [ "${{ inputs.delivery }}" = "docker" ]; then
+        if [ "${{ inputs.delivery }}" = "build" ]; then
+          SF="${{ github.workspace }}/sentinelflow"
+          "$SF" scan $ARGS \
+            --fail-on ${{ inputs.fail-on }} \
+            --format ${{ inputs.format }} \
+            -o "$OUT_PATH"
+          EXIT_CODE=$?
+        else
           docker run --rm \
             -v "${{ github.workspace }}:/workspace" \
             -w "${DOCKER_WORKDIR}" \
@@ -149,13 +168,6 @@ runs:
               --fail-on ${{ inputs.fail-on }} \
               --format ${{ inputs.format }} \
               -o "/workspace/${{ inputs.output }}"
-          EXIT_CODE=$?
-        else
-          SF="${{ github.workspace }}/sentinelflow"
-          "$SF" scan $ARGS \
-            --fail-on ${{ inputs.fail-on }} \
-            --format ${{ inputs.format }} \
-            -o "$OUT_PATH"
           EXIT_CODE=$?
         fi
         set -e

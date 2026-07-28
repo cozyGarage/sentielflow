@@ -44,41 +44,45 @@ jobs:
           category: sentinelflow
 ```
 
-For the same repository, use a local path:
+For the same repository (dogfood PR code), build from source:
 
 ```yaml
       - uses: ./.github/actions/sentinelflow
         with:
+          delivery: build
           scan-all: 'true'
           fail-on: high
           format: sarif
           output: report.sarif
 ```
 
+`delivery: docker` (default) pulls `image` and is the right path for **external** repos once a release image is published. `delivery: build` only works when the SentinelFlow source tree is in the workspace.
+
 ### Action inputs
 
 | Input | Default | Description |
 | --- | --- | --- |
+| `delivery` | `docker` | `docker` pulls `image`; `build` compiles from the workspace (same-repo only) |
+| `image` | `sentinelflow/sentinelflow:latest` | Container image when `delivery=docker` |
 | `scan-all` | `true` | Enable secrets, IaC, deps, SAST, license |
 | `scan-secrets` | `true` | Secret scanning |
 | `scan-iac` | `true` | IaC scanning |
 | `scan-deps` | `true` | Dependency scanning |
 | `scan-sast` | `true` | OWASP SAST rules |
 | `scan-license` | `true` | License policy checks |
-| `scan-container` | `false` | Container scan (installs Trivy) |
+| `scan-container` | `false` | Container scan (requires `delivery=build` + Trivy) |
 | `container-image` | — | Image to scan when container enabled |
 | `use-baseline` | `false` | Skip baselined findings |
 | `fail-on` | `high` | Pipeline failure threshold |
-| `format` | `sarif` | Report format |
+| `format` | `sarif` | Report format (`text`, `json`, `sarif`, `markdown`, `html`) |
 | `output` | `report.sarif` | Output file path |
-
-Go version is read from the repository's `go.mod` toolchain when building from source.
 
 ### Container scanning in CI
 
 ```yaml
       - uses: ./.github/actions/sentinelflow
         with:
+          delivery: build
           scan-all: 'false'
           scan-secrets: 'true'
           scan-container: 'true'
@@ -104,17 +108,18 @@ The workflow generates a Markdown report and updates an existing bot comment whe
 
 ## GitLab CI
 
+Prefer the published image (after a release):
+
 ```yaml
 stages:
   - security
 
 sentinelflow:
   stage: security
-  image: golang:1.25
+  image: sentinelflow/sentinelflow:latest
   script:
-    - go build -o sentinelflow ./cmd/sentinelflow
-    - ./sentinelflow scan --all --format sarif -o gl-sast-report.sarif --fail-on high
-    - ./sentinelflow sbom -o sbom.json
+    - sentinelflow scan --all --format sarif -o gl-sast-report.sarif --fail-on high
+    - sentinelflow sbom -o sbom.json
   artifacts:
     reports:
       sast: gl-sast-report.sarif
@@ -122,7 +127,18 @@ sentinelflow:
       - sbom.json
 ```
 
-See [examples/.gitlab-ci.yml](../examples/.gitlab-ci.yml) for a complete example with policy validation.
+Build from source when dogfooding this repository:
+
+```yaml
+sentinelflow:
+  stage: security
+  image: golang:1.25
+  script:
+    - go build -o sentinelflow ./cmd/sentinelflow
+    - ./sentinelflow scan --all --format sarif -o gl-sast-report.sarif --fail-on high
+```
+
+See [examples/.gitlab-ci.yml](../examples/.gitlab-ci.yml) for a complete source-based example with policy validation.
 
 ## Docker
 
