@@ -16,7 +16,7 @@ inputs:
     required: false
     default: sentinelflow/sentinelflow:latest
   scan-all:
-    description: Enable all scanners (secrets, iac, deps, sast, license)
+    description: Enable secrets/iac/deps/sast/license via --all (does not enable container; use scan-container)
     required: false
     default: 'true'
   scan-secrets:
