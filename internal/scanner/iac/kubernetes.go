@@ -301,8 +301,27 @@ func k8sFinding(id, ruleID, title, desc string, sev api.Severity, file, snippet,
 }
 
 func asBool(v interface{}) (bool, bool) {
-	b, ok := v.(bool)
-	return b, ok
+	switch b := v.(type) {
+	case bool:
+		return b, true
+	case string:
+		switch strings.ToLower(strings.TrimSpace(b)) {
+		case "true", "yes", "1", "on":
+			return true, true
+		case "false", "no", "0", "off":
+			return false, true
+		default:
+			return false, false
+		}
+	case int:
+		return b != 0, true
+	case int64:
+		return b != 0, true
+	case float64:
+		return b != 0, true
+	default:
+		return false, false
+	}
 }
 
 func asInt(v interface{}) (int, bool) {
