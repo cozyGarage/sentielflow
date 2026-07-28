@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `scanners.exclude` global path skip list (engine walk); secrets `allowlist` is secrets-only again
 - `scripts/count-findings.sh` for Action findings-count under `pipefail` (zero matches OK)
+- `scripts/install.sh` checksum verification against release `checksums.txt`
+- Release runbook [`docs/releasing.md`](docs/releasing.md) (Docker Hub secrets + tag cut)
 - Visual demo README with screenshots, `examples/demo-project`, and `make demo` / `scripts/demo.sh`
 - `scripts/install.sh` one-liner installer for GitHub Release binaries
 - GitHub Action `delivery: docker` (default) and `delivery: build` (same-repo dogfood)
@@ -24,6 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Primary install story is clone/`make build` until the first `v*` release publishes binaries and Docker Hub tags
+- GitHub Action inputs bound via `env` (no shell interpolation of `container-image` / `output` / etc.)
+- Release workflow pins `goreleaser-action@v6.3.0` and GoReleaser `v2.9.0` (not `latest`)
+- Docs clarify `go install` is unsupported until module path matches the GitHub repo
 - GoReleaser `project_name: sentinelflow` + lowercase `main.version` ldflags aligned with the CLI
 - Dockerfile accepts `ARG VERSION/COMMIT/DATE` and embeds them correctly
 - Repo CI dogfoods `./.github/actions/sentinelflow` with `delivery: build`

@@ -61,7 +61,9 @@ Checked-in samples: [`docs/assets/demo/`](docs/assets/demo/).
 | **Install script** | Laptops (after first `v*` release) | `curl -fsSL …/scripts/install.sh \| bash` |
 | **GitHub Action** | Pull requests | `delivery: docker` (external) or `delivery: build` (this repo) |
 
-> Release binaries and Docker Hub tags are published by GoReleaser on `v*` tags. Until the first release, use **clone + `make build`** or **`docker build`**.
+> Release binaries and Docker Hub tags are published by GoReleaser on `v*` tags (see [docs/releasing.md](docs/releasing.md)). Until a release is published, use **clone + `make build`** or **`docker build`**.
+>
+> `go install` is not advertised yet: the Go module path (`github.com/cozygarage/sentinelflow`) does not match the GitHub repo (`cozyGarage/sentielflow`).
 
 ### Build from source
 
