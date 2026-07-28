@@ -7,6 +7,7 @@ SentinelFlow is designed to be simple yet powerful. This guide covers the most c
 | Method | Command |
 | --- | --- |
 | Docker | `docker pull sentinelflow/sentinelflow:latest` |
+| Install script | `curl -fsSL https://raw.githubusercontent.com/cozyGarage/sentielflow/main/scripts/install.sh \| bash` |
 | Release binary | Download from [GitHub Releases](https://github.com/cozyGarage/sentielflow/releases) |
 | Go | `go install github.com/cozygarage/sentinelflow/cmd/sentinelflow@latest` |
 | Source | `make build` |

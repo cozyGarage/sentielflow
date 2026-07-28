@@ -6,6 +6,7 @@
 
 # Demo output (regenerate with `make demo`)
 /demo-out/
+docs/assets/screenshots/_terminal.html
 
 # OS generated files
 .DS_Store

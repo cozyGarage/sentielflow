@@ -132,11 +132,18 @@ runs:
         fi
 
         OUT_PATH="${{ github.workspace }}/${{ inputs.output }}"
+        WORK_DIR="${{ inputs.working-directory }}"
+        if [ -z "${WORK_DIR}" ] || [ "${WORK_DIR}" = "." ]; then
+          DOCKER_WORKDIR="/workspace"
+        else
+          DOCKER_WORKDIR="/workspace/${WORK_DIR}"
+        fi
+
         set +e
         if [ "${{ inputs.delivery }}" = "docker" ]; then
           docker run --rm \
             -v "${{ github.workspace }}:/workspace" \
-            -w "/workspace/${{ inputs.working-directory }}" \
+            -w "${DOCKER_WORKDIR}" \
             "${{ inputs.image }}" \
             scan $ARGS \
               --fail-on ${{ inputs.fail-on }} \

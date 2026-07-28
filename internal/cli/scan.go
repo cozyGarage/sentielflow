@@ -52,7 +52,8 @@ Examples:
   sentinelflow scan ./src --secrets --iac
   sentinelflow scan --all --format sarif -o report.sarif
   sentinelflow scan --fail-on high`,
-	RunE: runScan,
+	RunE:         runScan,
+	SilenceUsage: true, // gate failures and scan errors print the message without cobra Usage spam
 }
 
 func init() {
