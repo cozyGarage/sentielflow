@@ -45,7 +45,7 @@ Available scanners:
   --sast         Static application security testing (OWASP patterns)
   --container    Scan container images (requires Trivy)
   --license      Check dependency licenses against policy
-  --all          Enable all implemented scanners (excludes AI preview)
+  --all          Enable secrets/IaC/deps/SAST/license (not container or AI; use --container for Trivy)
 
 Examples:
   sentinelflow scan
@@ -66,7 +66,7 @@ func init() {
 	scanCmd.Flags().StringVar(&containerImage, "container-image", "", "container image to scan")
 	scanCmd.Flags().BoolVar(&useBaseline, "baseline", false, "apply baseline filtering")
 	scanCmd.Flags().BoolVar(&scanAI, "ai", false, "AI-powered code review (not available in this release)")
-	scanCmd.Flags().BoolVar(&scanAll, "all", false, "enable all scanners")
+	scanCmd.Flags().BoolVar(&scanAll, "all", false, "enable secrets, iac, deps, sast, and license (not container/AI)")
 	scanCmd.Flags().StringVarP(&outputFile, "output", "o", "", "output file path")
 	scanCmd.Flags().StringVar(&failOnSeverity, "fail-on", "", "fail if findings match severity (critical, high, medium, low)")
 }
@@ -100,13 +100,12 @@ func runScan(cmd *cobra.Command, args []string) error {
 		cfg = config.Default()
 	}
 
-	if err := cfg.Validate(); err != nil {
-		return fmt.Errorf("invalid configuration: %w", err)
-	}
-
-	// Apply CLI flags to config
+	// Apply CLI flags to config, then normalize/validate (including --fail-on).
 	if err := applyScanFlags(cfg); err != nil {
 		return err
+	}
+	if err := cfg.Validate(); err != nil {
+		return fmt.Errorf("invalid configuration: %w", err)
 	}
 
 	// Prefer config reporting format unless --format was explicitly set
@@ -181,8 +180,9 @@ func applyScanFlags(cfg *config.Config) error {
 		cfg.Scanners.IaC.Enabled = true
 		cfg.Scanners.Dependencies.Enabled = true
 		cfg.Scanners.SAST.Enabled = true
-		cfg.Scanners.Container.Enabled = true
 		cfg.Scanners.License.Enabled = true
+		// Container needs Trivy (+ usually an image); keep opt-in via --container.
+		cfg.Scanners.Container.Enabled = false
 		// AI scanner is not registered in v1.0
 		cfg.Scanners.AI.Enabled = false
 	} else if scanSecrets || scanIaC || scanDependencies || scanSAST || scanContainer || scanLicense {
@@ -305,8 +305,9 @@ func printScanSummary(result *api.ScanResult) {
 func shouldFail(result *api.ScanResult, cfg *config.Config) bool {
 	counts := result.CountBySeverity()
 
-	if cfg.FailOn.Severity != "" {
-		switch cfg.FailOn.Severity {
+	threshold := strings.ToLower(strings.TrimSpace(cfg.FailOn.Severity))
+	if threshold != "" {
+		switch threshold {
 		case "critical":
 			if counts[api.SeverityCritical] > 0 {
 				return true
@@ -322,6 +323,10 @@ func shouldFail(result *api.ScanResult, cfg *config.Config) bool {
 		case "low":
 			if counts[api.SeverityCritical] > 0 || counts[api.SeverityHigh] > 0 ||
 				counts[api.SeverityMedium] > 0 || counts[api.SeverityLow] > 0 {
+				return true
+			}
+		case "info":
+			if len(result.Findings) > 0 {
 				return true
 			}
 		}

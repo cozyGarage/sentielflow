@@ -80,9 +80,16 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 
 	concurrency := types.EffectiveConcurrency(opts, s.config.Scanners.SAST.Concurrency, 8)
 	var mu sync.Mutex
+	var scanErrs []string
 	types.RunWorkers(ctx, concurrency, scanFiles, func(fp string) {
 		findings, err := s.scanFile(ctx, fp, path)
-		if err != nil || len(findings) == 0 {
+		if err != nil {
+			mu.Lock()
+			scanErrs = append(scanErrs, fmt.Sprintf("%s: %v", fp, err))
+			mu.Unlock()
+			return
+		}
+		if len(findings) == 0 {
 			return
 		}
 		mu.Lock()
@@ -90,6 +97,9 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 		mu.Unlock()
 	})
 
+	if len(scanErrs) > 0 {
+		return result, fmt.Errorf("sast scan errors (%d): %s", len(scanErrs), strings.Join(scanErrs, "; "))
+	}
 	return result, nil
 }
 
@@ -174,7 +184,7 @@ func (s *Scanner) collectFiles(dir string) ([]string, error) {
 		if err != nil {
 			rel = path
 		}
-		if filter.ShouldSkip(rel, s.config.Scanners.Secrets.Allowlist) {
+		if filter.ShouldSkip(rel, s.config.Scanners.Exclude) {
 			return nil
 		}
 		files = append(files, path)

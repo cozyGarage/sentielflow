@@ -70,6 +70,7 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 
 	result.FilesCount = len(inputs)
 
+	var evalErrs []string
 	for _, input := range inputs {
 		for _, name := range policyNames {
 			select {
@@ -80,6 +81,7 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 
 			policyResult, err := engine.EvaluatePolicy(name, input.Data)
 			if err != nil {
+				evalErrs = append(evalErrs, fmt.Sprintf("%s/%s: %v", input.FilePath, name, err))
 				continue
 			}
 
@@ -94,6 +96,9 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 		}
 	}
 
+	if len(evalErrs) > 0 {
+		return result, fmt.Errorf("policy evaluation errors (%d): %s", len(evalErrs), strings.Join(evalErrs, "; "))
+	}
 	return result, nil
 }
 

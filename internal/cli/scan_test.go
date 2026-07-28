@@ -8,6 +8,20 @@ import (
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
 
+func TestShouldFailCaseInsensitive(t *testing.T) {
+	cfg := &config.Config{
+		FailOn: config.FailOnConfig{Severity: "HIGH"},
+	}
+	result := &api.ScanResult{
+		Findings: []api.Finding{
+			{Severity: api.SeverityHigh},
+		},
+	}
+	if !shouldFail(result, cfg) {
+		t.Fatal("expected HIGH threshold to match high findings")
+	}
+}
+
 func TestShouldFailChecksAllGates(t *testing.T) {
 	cfg := &config.Config{
 		FailOn: config.FailOnConfig{
@@ -74,8 +88,12 @@ func TestApplyScanFlagsAllPreservesOverrides(t *testing.T) {
 		t.Fatalf("applyScanFlags: %v", err)
 	}
 
-	if !cfg.Scanners.Secrets.Enabled || !cfg.Scanners.SAST.Enabled || !cfg.Scanners.Container.Enabled {
-		t.Fatal("expected --all to enable implemented scanners")
+	if !cfg.Scanners.Secrets.Enabled || !cfg.Scanners.SAST.Enabled || !cfg.Scanners.License.Enabled {
+		t.Fatal("expected --all to enable secrets/iac/deps/sast/license")
+	}
+	// --container-image still opts into container even when --all alone would not.
+	if !cfg.Scanners.Container.Enabled {
+		t.Fatal("expected --container-image to enable container with --all")
 	}
 	if cfg.FailOn.Severity != "low" {
 		t.Fatalf("expected --fail-on to apply with --all, got %q", cfg.FailOn.Severity)
@@ -85,6 +103,30 @@ func TestApplyScanFlagsAllPreservesOverrides(t *testing.T) {
 	}
 	if cfg.Scanners.Container.Image != "alpine:3.19" {
 		t.Fatalf("expected container image override, got %q", cfg.Scanners.Container.Image)
+	}
+}
+
+func TestApplyScanFlagsAllDoesNotEnableContainer(t *testing.T) {
+	prevAll := scanAll
+	prevImage := containerImage
+	prevContainer := scanContainer
+	t.Cleanup(func() {
+		scanAll = prevAll
+		containerImage = prevImage
+		scanContainer = prevContainer
+	})
+
+	scanAll = true
+	containerImage = ""
+	scanContainer = false
+
+	cfg := config.Default()
+	cfg.Scanners.Container.Enabled = true // config default on; --all should clear it
+	if err := applyScanFlags(cfg); err != nil {
+		t.Fatalf("applyScanFlags: %v", err)
+	}
+	if cfg.Scanners.Container.Enabled {
+		t.Fatal("expected --all alone to leave container disabled")
 	}
 }
 

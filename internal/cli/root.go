@@ -145,12 +145,15 @@ var initCmd = &cobra.Command{
 version: "1.0"
 
 scanners:
+  # Global path skips for the engine walk (all scanners).
+  exclude:
+    - "test/**"
+    - "**/testdata/**"
   secrets:
     enabled: true
+    # Secrets-only skips (does not hide paths from IaC/SAST).
     allowlist:
-      - "test/**"
       - "**/*_test.go"
-      - "**/testdata/**"
     entropy_threshold: 4.5
   
   iac:

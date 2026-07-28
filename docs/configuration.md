@@ -12,12 +12,19 @@ Run `sentinelflow init` to generate a starter configuration.
 
 ## Scanners
 
+### Global (`scanners`)
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `concurrency` | int | `8` | Default worker concurrency for file scanners |
+| `exclude` | []string | `test/**`, `**/testdata/**` | Global path globs skipped by the engine walk (all scanners). Prefer this over stuffing skips into the secrets allowlist. |
+
 ### Secrets (`scanners.secrets`)
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `enabled` | bool | `true` | Enable secret scanning |
-| `allowlist` | []string | test paths | Glob patterns to skip |
+| `allowlist` | []string | test file globs | Glob patterns skipped **only** by the secrets scanner (does not hide paths from IaC/SAST) |
 | `patterns` | []string | — | Custom pattern names to include |
 | `entropy_threshold` | float | `4.5` | Minimum Shannon entropy to flag |
 | `scan_git_history` | bool | `false` | Scan git history for secrets |
@@ -139,11 +146,13 @@ scanners:
   # Optional global worker-pool size for file-based scanners (default: 8).
   # Per-scanner overrides: secrets.concurrency, sast.concurrency, iac.concurrency.
   concurrency: 8
+  exclude:
+    - "test/**"
+    - "examples/demo-project/**"
   secrets:
     enabled: true
     entropy_threshold: 4.5
     allowlist:
-      - "test/**"
       - "**/*_test.go"
 
   iac:

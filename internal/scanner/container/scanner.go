@@ -55,24 +55,19 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 	}
 
 	if image == "" {
-		result.Skipped = true
-		result.SkipReason = "no container image specified or detected"
-		return result, nil
+		return result, fmt.Errorf("container scan enabled but no image specified or detected")
 	}
 
 	if !IsTrivyAvailable() {
-		result.Skipped = true
-		result.SkipReason = "trivy not installed; install from https://trivy.dev"
-		return result, nil
+		return result, fmt.Errorf("trivy not installed; install from https://trivy.dev")
 	}
 
 	findings, err := s.runTrivy(ctx, image)
-	if err != nil {
-		return nil, fmt.Errorf("trivy scan failed: %w", err)
-	}
-
 	result.Findings = findings
 	result.FilesCount = 1
+	if err != nil {
+		return result, fmt.Errorf("trivy scan failed: %w", err)
+	}
 	return result, nil
 }
 
@@ -119,13 +114,36 @@ func (s *Scanner) runTrivy(ctx context.Context, image string) ([]api.Finding, er
 	}
 
 	cmd := exec.CommandContext(ctx, "trivy", "image", "--format", "json", "--quiet", "--", image)
-	output, err := cmd.Output()
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok && len(exitErr.Stderr) > 0 {
-			return nil, fmt.Errorf("%s: %s", err, string(exitErr.Stderr))
+	output, runErr := cmd.Output()
+
+	var findings []api.Finding
+	if len(output) > 0 {
+		parsed, parseErr := s.parseTrivyOutput(image, output)
+		if parseErr != nil && runErr == nil {
+			return nil, parseErr
 		}
+		findings = parsed
+		if parseErr != nil && runErr != nil {
+			return findings, fmt.Errorf("%w (also failed to parse output: %v)", trivyRunError(runErr), parseErr)
+		}
+	} else if runErr == nil {
+		return nil, fmt.Errorf("trivy returned empty output")
 	}
 
+	if runErr != nil {
+		return findings, trivyRunError(runErr)
+	}
+	return findings, nil
+}
+
+func trivyRunError(err error) error {
+	if exitErr, ok := err.(*exec.ExitError); ok && len(exitErr.Stderr) > 0 {
+		return fmt.Errorf("%s: %s", err, string(exitErr.Stderr))
+	}
+	return err
+}
+
+func (s *Scanner) parseTrivyOutput(image string, output []byte) ([]api.Finding, error) {
 	var report trivyReport
 	if err := json.Unmarshal(output, &report); err != nil {
 		return nil, fmt.Errorf("failed to parse trivy output: %w", err)

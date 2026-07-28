@@ -27,6 +27,9 @@ type Config struct {
 // ScannersConfig contains settings for all scanners
 type ScannersConfig struct {
 	Concurrency  int                 `yaml:"concurrency" mapstructure:"concurrency"`
+	// Exclude is a global path skip list applied by the engine (and shared walks).
+	// Secrets-specific skips belong in scanners.secrets.allowlist.
+	Exclude      []string            `yaml:"exclude" mapstructure:"exclude"`
 	Secrets      SecretsConfig      `yaml:"secrets" mapstructure:"secrets"`
 	IaC          IaCConfig          `yaml:"iac" mapstructure:"iac"`
 	Dependencies DependenciesConfig `yaml:"dependencies" mapstructure:"dependencies"`
@@ -160,15 +163,17 @@ func Default() *Config {
 		Version: "1.0",
 		Scanners: ScannersConfig{
 			Concurrency: 8,
+			Exclude: []string{
+				"test/**",
+				"**/testdata/**",
+			},
 			Secrets: SecretsConfig{
 				Enabled:          true,
 				EntropyThreshold: 4.5,
 				MaxHistoryDepth:  50,
 				Concurrency:      10,
 				Allowlist: []string{
-					"test/**",
 					"**/*_test.go",
-					"**/testdata/**",
 					"**/*.test.js",
 					"**/*.spec.ts",
 				},
@@ -258,22 +263,29 @@ func (c *Config) Validate() error {
 		"": true, "text": true, "json": true, "sarif": true, "markdown": true, "html": true,
 	}
 
-	if !validSeverities[strings.ToLower(c.FailOn.Severity)] {
+	c.FailOn.Severity = strings.ToLower(strings.TrimSpace(c.FailOn.Severity))
+	c.Scanners.IaC.Severity = strings.ToLower(strings.TrimSpace(c.Scanners.IaC.Severity))
+	c.Scanners.Dependencies.Severity = strings.ToLower(strings.TrimSpace(c.Scanners.Dependencies.Severity))
+	c.Scanners.SAST.Severity = strings.ToLower(strings.TrimSpace(c.Scanners.SAST.Severity))
+	c.Scanners.Container.Severity = strings.ToLower(strings.TrimSpace(c.Scanners.Container.Severity))
+	c.Reporting.Format = strings.ToLower(strings.TrimSpace(c.Reporting.Format))
+
+	if !validSeverities[c.FailOn.Severity] {
 		return fmt.Errorf("invalid fail_on.severity %q (expected critical, high, medium, low, or info)", c.FailOn.Severity)
 	}
-	if !validSeverities[strings.ToLower(c.Scanners.IaC.Severity)] {
+	if !validSeverities[c.Scanners.IaC.Severity] {
 		return fmt.Errorf("invalid scanners.iac.severity %q", c.Scanners.IaC.Severity)
 	}
-	if !validSeverities[strings.ToLower(c.Scanners.Dependencies.Severity)] {
+	if !validSeverities[c.Scanners.Dependencies.Severity] {
 		return fmt.Errorf("invalid scanners.dependencies.severity %q", c.Scanners.Dependencies.Severity)
 	}
-	if !validSeverities[strings.ToLower(c.Scanners.SAST.Severity)] {
+	if !validSeverities[c.Scanners.SAST.Severity] {
 		return fmt.Errorf("invalid scanners.sast.severity %q", c.Scanners.SAST.Severity)
 	}
-	if !validSeverities[strings.ToLower(c.Scanners.Container.Severity)] {
+	if !validSeverities[c.Scanners.Container.Severity] {
 		return fmt.Errorf("invalid scanners.container.severity %q", c.Scanners.Container.Severity)
 	}
-	if !validFormats[strings.ToLower(c.Reporting.Format)] {
+	if !validFormats[c.Reporting.Format] {
 		return fmt.Errorf("invalid reporting.format %q (expected text, json, sarif, markdown, or html)", c.Reporting.Format)
 	}
 	if c.Scanners.Secrets.EntropyThreshold < 0 {
