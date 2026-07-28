@@ -33,10 +33,15 @@ func (s *Scanner) Name() string { return "license" }
 
 func (s *Scanner) Supports(path string) bool {
 	base := filepath.Base(path)
-	return base == "package.json" || base == "go.mod" || base == "Cargo.toml"
+	// Only manifests we actually inspect (no Cargo.toml — not implemented).
+	return base == "package.json" || base == "go.mod"
 }
 
-// Scan performs license policy checking
+// Scan performs license policy checking.
+//
+// Limits: transitive dependency licenses are resolved from a small hardcoded
+// map (see knownLicenses), not a full license database or SBOM. Unknown
+// packages are not flagged. Use an SBOM/license tool for comprehensive coverage.
 func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*ScannerResult, error) {
 	result := &ScannerResult{Findings: []api.Finding{}}
 
@@ -44,12 +49,13 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 	if len(denied) == 0 {
 		denied = []string{"GPL-3.0", "AGPL-3.0", "SSPL-1.0"}
 	}
+	allowed := s.config.Scanners.License.Allowed
 
-	if findings, err := s.checkPackageJSON(path, denied); err == nil {
+	if findings, err := s.checkPackageJSON(path, denied, allowed); err == nil {
 		result.Findings = append(result.Findings, findings...)
 		result.FilesCount++
 	}
-	if findings, err := s.checkGoMod(path, denied); err == nil {
+	if findings, err := s.checkGoMod(path, denied, allowed); err == nil {
 		result.Findings = append(result.Findings, findings...)
 		result.FilesCount++
 	}
@@ -57,7 +63,7 @@ func (s *Scanner) Scan(ctx context.Context, path string, opts interface{}) (*Sca
 	return result, nil
 }
 
-func (s *Scanner) checkPackageJSON(path string, denied []string) ([]api.Finding, error) {
+func (s *Scanner) checkPackageJSON(path string, denied, allowed []string) ([]api.Finding, error) {
 	pkgPath := filepath.Join(path, "package.json")
 	data, err := os.ReadFile(pkgPath)
 	if err != nil {
@@ -65,8 +71,8 @@ func (s *Scanner) checkPackageJSON(path string, denied []string) ([]api.Finding,
 	}
 
 	var pkg struct {
-		Name         string `json:"name"`
-		License      string `json:"license"`
+		Name         string            `json:"name"`
+		License      string            `json:"license"`
 		Dependencies map[string]string `json:"dependencies"`
 	}
 	if err := json.Unmarshal(data, &pkg); err != nil {
@@ -75,16 +81,15 @@ func (s *Scanner) checkPackageJSON(path string, denied []string) ([]api.Finding,
 
 	var findings []api.Finding
 	if pkg.License != "" {
-		if f := s.checkLicense(pkg.Name, pkg.License, denied, pkgPath); f != nil {
+		if f := s.checkLicense(pkg.Name, pkg.License, denied, allowed, pkgPath); f != nil {
 			findings = append(findings, *f)
 		}
 	}
 
-	// Check known problematic packages
-	knownLicenses := s.getKnownLicenses()
+	known := knownLicenses()
 	for dep := range pkg.Dependencies {
-		if lic, ok := knownLicenses[dep]; ok {
-			if f := s.checkLicense(dep, lic, denied, pkgPath); f != nil {
+		if lic, ok := known[dep]; ok {
+			if f := s.checkLicense(dep, lic, denied, allowed, pkgPath); f != nil {
 				findings = append(findings, *f)
 			}
 		}
@@ -93,14 +98,14 @@ func (s *Scanner) checkPackageJSON(path string, denied []string) ([]api.Finding,
 	return findings, nil
 }
 
-func (s *Scanner) checkGoMod(path string, denied []string) ([]api.Finding, error) {
+func (s *Scanner) checkGoMod(path string, denied, allowed []string) ([]api.Finding, error) {
 	goModPath := filepath.Join(path, "go.mod")
 	data, err := os.ReadFile(goModPath)
 	if err != nil {
 		return nil, err
 	}
 
-	knownLicenses := s.getKnownLicenses()
+	known := knownLicenses()
 	var findings []api.Finding
 
 	for _, line := range strings.Split(string(data), "\n") {
@@ -111,8 +116,8 @@ func (s *Scanner) checkGoMod(path string, denied []string) ([]api.Finding, error
 		parts := strings.Fields(trimmed)
 		if len(parts) >= 2 && !strings.HasPrefix(parts[0], "require") && parts[0] != ")" {
 			mod := parts[0]
-			if lic, ok := knownLicenses[mod]; ok {
-				if f := s.checkLicense(mod, lic, denied, goModPath); f != nil {
+			if lic, ok := known[mod]; ok {
+				if f := s.checkLicense(mod, lic, denied, allowed, goModPath); f != nil {
 					findings = append(findings, *f)
 				}
 			}
@@ -122,33 +127,56 @@ func (s *Scanner) checkGoMod(path string, denied []string) ([]api.Finding, error
 	return findings, nil
 }
 
-func (s *Scanner) checkLicense(name, license string, denied []string, filePath string) *api.Finding {
-	for _, d := range denied {
-		if strings.EqualFold(license, d) || strings.Contains(strings.ToUpper(license), strings.ToUpper(d)) {
-			return &api.Finding{
-				ID:          fmt.Sprintf("LICENSE-%s", name),
-				Type:        api.FindingTypePolicyViolation,
-				Severity:    api.SeverityHigh,
-				Title:       fmt.Sprintf("Denied license: %s", license),
-				Description: fmt.Sprintf("Package %s uses license %s which is not allowed by policy", name, license),
-				Location:    api.Location{File: filePath, Snippet: fmt.Sprintf("%s (%s)", name, license)},
-				Remediation: fmt.Sprintf("Replace %s with an alternative using an approved license", name),
-				Scanner:     "license",
-				RuleID:      "denied-license",
-				Confidence:  0.9,
-				Metadata:    map[string]any{"license": license, "package": name},
-			}
+func (s *Scanner) checkLicense(name, license string, denied, allowed []string, filePath string) *api.Finding {
+	if len(allowed) > 0 && !licenseInList(license, allowed) {
+		return &api.Finding{
+			ID:          fmt.Sprintf("LICENSE-%s", name),
+			Type:        api.FindingTypePolicyViolation,
+			Severity:    api.SeverityHigh,
+			Title:       fmt.Sprintf("License not in allowlist: %s", license),
+			Description: fmt.Sprintf("Package %s uses license %s which is not in scanners.license.allowed", name, license),
+			Location:    api.Location{File: filePath, Snippet: fmt.Sprintf("%s (%s)", name, license)},
+			Remediation: fmt.Sprintf("Replace %s with a package using an allowed license, or add %s to allowed", name, license),
+			Scanner:     "license",
+			RuleID:      "license-not-allowed",
+			Confidence:  0.9,
+			Metadata:    map[string]any{"license": license, "package": name},
+		}
+	}
+
+	if licenseInList(license, denied) {
+		return &api.Finding{
+			ID:          fmt.Sprintf("LICENSE-%s", name),
+			Type:        api.FindingTypePolicyViolation,
+			Severity:    api.SeverityHigh,
+			Title:       fmt.Sprintf("Denied license: %s", license),
+			Description: fmt.Sprintf("Package %s uses license %s which is not allowed by policy", name, license),
+			Location:    api.Location{File: filePath, Snippet: fmt.Sprintf("%s (%s)", name, license)},
+			Remediation: fmt.Sprintf("Replace %s with an alternative using an approved license", name),
+			Scanner:     "license",
+			RuleID:      "denied-license",
+			Confidence:  0.9,
+			Metadata:    map[string]any{"license": license, "package": name},
 		}
 	}
 	return nil
 }
 
-// getKnownLicenses returns a minimal known-license database for common packages
-func (s *Scanner) getKnownLicenses() map[string]string {
+func licenseInList(license string, list []string) bool {
+	for _, item := range list {
+		if strings.EqualFold(license, item) || strings.Contains(strings.ToUpper(license), strings.ToUpper(item)) {
+			return true
+		}
+	}
+	return false
+}
+
+// knownLicenses is a minimal hardcoded map for demo/CI noise reduction — not exhaustive.
+func knownLicenses() map[string]string {
 	return map[string]string{
-		"readline":                    "GPL-3.0",
+		"readline":                       "GPL-3.0",
 		"github.com/hashicorp/go-plugin": "MPL-2.0",
-		"webpack":                     "MIT",
-		"lodash":                      "MIT",
+		"webpack":                        "MIT",
+		"lodash":                         "MIT",
 	}
 }

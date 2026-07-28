@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/cozygarage/sentinelflow/internal/config"
+	"github.com/cozygarage/sentinelflow/internal/scanner/redact"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
 
@@ -43,7 +44,36 @@ func (r *Reporter) Generate(result *api.ScanResult, format string) (string, erro
 		return "", fmt.Errorf("unsupported format: %s", format)
 	}
 
-	return formatter.Format(result)
+	// Defense-in-depth: never emit raw secret-like snippets in any format.
+	return formatter.Format(redactResult(result))
+}
+
+func redactResult(result *api.ScanResult) *api.ScanResult {
+	if result == nil {
+		return nil
+	}
+	out := *result
+	if len(result.Findings) == 0 {
+		return &out
+	}
+	out.Findings = make([]api.Finding, len(result.Findings))
+	copy(out.Findings, result.Findings)
+	for i := range out.Findings {
+		f := &out.Findings[i]
+		if f.Type == api.FindingTypeSecret || f.Scanner == "secrets" {
+			f.Location.Snippet = redact.Snippet(f.Location.Snippet)
+			if f.Title != "" {
+				f.Title = redact.Line(f.Title)
+			}
+			if f.Description != "" {
+				f.Description = redact.Line(f.Description)
+			}
+		} else if f.Location.Snippet != "" {
+			// Soft redact assignment-like values in other scanners too.
+			f.Location.Snippet = redact.Snippet(f.Location.Snippet)
+		}
+	}
+	return &out
 }
 
 // TextFormatter formats reports as plain text

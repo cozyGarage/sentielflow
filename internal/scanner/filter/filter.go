@@ -26,6 +26,30 @@ func ShouldSkip(path string, allowlist []string) bool {
 	return false
 }
 
+// IsBundledSampleDir reports whether dirPath is a repo sample tree that should
+// be skipped when scanning a larger target. Only test/fixtures and
+// examples/demo-project qualify — not arbitrary directories named "fixtures".
+func IsBundledSampleDir(scanRoot, dirPath string) bool {
+	root := filepath.Clean(scanRoot)
+	dir := filepath.Clean(dirPath)
+	if dir == root {
+		return false
+	}
+	rel, err := filepath.Rel(root, dir)
+	if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
+		return false
+	}
+	rel = filepath.ToSlash(rel)
+	switch {
+	case rel == "test/fixtures", strings.HasPrefix(rel, "test/fixtures/"):
+		return true
+	case rel == "examples/demo-project", strings.HasPrefix(rel, "examples/demo-project/"):
+		return true
+	default:
+		return false
+	}
+}
+
 func matchPattern(path, base, pattern string) bool {
 	if path == pattern {
 		return true

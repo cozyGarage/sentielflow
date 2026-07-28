@@ -69,9 +69,11 @@ Run `sentinelflow init` to generate a starter configuration.
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
-| `enabled` | bool | `false` | Enable license policy scanning |
+| `enabled` | bool | `false` | Enable license policy scanning (`package.json` / `go.mod` only) |
 | `denied` | []string | GPL-3.0, AGPL-3.0, SSPL-1.0 | Licenses that fail the scan |
-| `allowed` | []string | — | If set, only these licenses are permitted |
+| `allowed` | []string | — | If non-empty, only these licenses are permitted (checked before denied) |
+
+License coverage is intentionally limited: known transitive licenses are a small hardcoded map, not a full SBOM license database.
 
 ### Baseline (`baseline`)
 

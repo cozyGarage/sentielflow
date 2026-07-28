@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/cozygarage/sentinelflow/internal/config"
+	"github.com/cozygarage/sentinelflow/internal/scanner/filter"
 	"github.com/cozygarage/sentinelflow/internal/scanner/types"
 	"github.com/cozygarage/sentinelflow/pkg/api"
 )
@@ -168,7 +169,7 @@ func (s *Scanner) collectIaCFiles(dir string) ([]string, error) {
 				name == "dist" || name == "build" {
 				return filepath.SkipDir
 			}
-			if filepath.Clean(path) != root && (name == "testdata" || name == "fixtures" || name == "demo-project") {
+			if filepath.Clean(path) != root && (name == "testdata" || filter.IsBundledSampleDir(root, path)) {
 				return filepath.SkipDir
 			}
 			return nil
