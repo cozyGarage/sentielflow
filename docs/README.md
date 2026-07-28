@@ -16,11 +16,13 @@ Welcome to the SentinelFlow v1.0 documentation.
 ## Quick Links
 
 - [GitHub Repository](https://github.com/cozyGarage/sentielflow)
+- [Live demo project](../examples/demo-project) — `make demo`
+- [Sample HTML report](assets/demo/report.html)
 - [Contributing Guidelines](../CONTRIBUTING.md)
 - [Changelog](../CHANGELOG.md)
 - [Architecture Overview](../ARCHITECTURE.md)
 
 ## Requirements
 
-- Go 1.25+ (toolchain pinned in `go.mod`)
+- Go 1.25+ (toolchain pinned in `go.mod`), **or** Docker / a GitHub Release binary
 - Optional: [Trivy](https://github.com/aquasecurity/trivy) for container scanning
