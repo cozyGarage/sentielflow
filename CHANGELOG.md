@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `scripts/install.sh` checksum verification against release `checksums.txt`
 - Release runbook [`docs/releasing.md`](docs/releasing.md) (Docker Hub secrets + tag cut)
 - License `allowed` list enforcement; redact unit tests + reporter defense-in-depth
+- Post-audit residual risk note: [`docs/audit-residual-risks.md`](docs/audit-residual-risks.md)
 - Visual demo README with screenshots, `examples/demo-project`, and `make demo` / `scripts/demo.sh`
 - `scripts/install.sh` one-liner installer for GitHub Release binaries
 - GitHub Action `delivery: docker` (default) and `delivery: build` (same-repo dogfood)
