@@ -11,6 +11,8 @@ Welcome to the SentinelFlow v1.0 documentation.
 | [Scanner Details](scanners.md) | How each scanner works |
 | [Policy Authoring](policies.md) | Writing and testing OPA/Rego policies |
 | [CI/CD Integration](cicd-integration.md) | GitHub Actions, GitLab CI, Docker |
+| [Releasing](releasing.md) | `v*` tags, Docker Hub secrets, install checksums |
+| [Audit residual risks](audit-residual-risks.md) | Known gaps after the audit improvement cycle |
 | [Architecture](architecture.md) | Engine design and scan pipeline |
 
 ## Quick Links

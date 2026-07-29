@@ -144,6 +144,9 @@ var initCmd = &cobra.Command{
 
 version: "1.0"
 
+# Overall scan deadline (Go duration). Override with --timeout.
+scan_timeout: 10m
+
 scanners:
   # Global path skips for the engine walk (all scanners).
   exclude:
