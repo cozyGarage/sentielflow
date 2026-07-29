@@ -74,6 +74,7 @@ For the same repository (dogfood PR code), build from source:
 | `container-image` | — | Image to scan when container enabled |
 | `use-baseline` | `false` | Skip baselined findings |
 | `fail-on` | `high` | Pipeline failure threshold |
+| `timeout` | — | Scan deadline (`10m`, `90s`, …); empty uses config default |
 | `format` | `sarif` | Report format (`text`, `json`, `sarif`, `markdown`, `html`) |
 | `output` | `report.sarif` | Output file path |
 
