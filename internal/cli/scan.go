@@ -168,7 +168,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 	// Print summary
 	printScanSummary(result)
 
-	if err := scannerErrors(result); err != nil {
+	if err := scannerErrors(result, cfg); err != nil {
 		return err
 	}
 
@@ -227,12 +227,17 @@ func applyScanFlags(cfg *config.Config) error {
 	return nil
 }
 
-func scannerErrors(result *api.ScanResult) error {
+func scannerErrors(result *api.ScanResult, cfg *config.Config) error {
 	var errs []string
 	for _, run := range result.ScannerRuns {
-		if run.Error != "" {
-			errs = append(errs, fmt.Sprintf("%s: %s", run.Scanner, run.Error))
+		if run.Error == "" {
+			continue
 		}
+		if run.Scanner == "dependencies" && cfg != nil && !cfg.DependenciesFailOnError() {
+			fmt.Printf("%s dependencies scanner error (non-fatal): %s\n", color.YellowString("⚠"), run.Error)
+			continue
+		}
+		errs = append(errs, fmt.Sprintf("%s: %s", run.Scanner, run.Error))
 	}
 	if len(errs) == 0 {
 		return nil

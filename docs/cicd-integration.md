@@ -80,6 +80,8 @@ For the same repository (dogfood PR code), build from source:
 
 ### Container scanning in CI
 
+`scan-container` needs Trivy on the runner. Use `delivery: build` (this repo or a checkout that can `go build`). The Docker delivery image does not include Trivy.
+
 ```yaml
       - uses: ./.github/actions/sentinelflow
         with:
@@ -92,6 +94,51 @@ For the same repository (dogfood PR code), build from source:
           format: sarif
           output: report.sarif
 ```
+
+### Baseline in CI
+
+Generate locally, commit `.sentinelflow/baseline.yaml`, then enable filtering:
+
+```bash
+sentinelflow baseline . -o .sentinelflow/baseline.yaml
+```
+
+```yaml
+      - uses: cozyGarage/sentielflow/.github/actions/sentinelflow@main
+        with:
+          delivery: docker
+          image: sentinelflow/sentinelflow:latest
+          use-baseline: 'true'
+          fail-on: high
+          format: sarif
+          output: report.sarif
+```
+
+### SARIF upload (code scanning)
+
+Upload even when the security gate fails so findings still land in the GitHub Security tab:
+
+```yaml
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: report.sarif
+          category: sentinelflow
+```
+
+Requires `permissions: security-events: write` on the job.
+
+### Soft-fail OSV / dependency network errors
+
+Default is strict (`fail_on_error: true`). For flaky CI networks only:
+
+```yaml
+scanners:
+  dependencies:
+    fail_on_error: false
+```
+
+Findings collected before the error still apply `fail_on`; only the transport/scanner error becomes a warning.
 
 ### SBOM and policy validation
 

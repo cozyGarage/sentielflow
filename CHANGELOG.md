@@ -7,14 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- `scripts/install.sh` parse error on extract (`find` parentheses broke `[[` parsing)
+## [1.1.1] - 2026-07-29
 
 ### Added
 
-- GitHub Action `timeout` input (maps to `--timeout`)
-- Release workflow publishes GitHub binaries even when Docker Hub secrets are absent (`--skip=docker`)
+- `scanners.dependencies.fail_on_error` (default `true`) to soft-skip OSV/network errors without false greens
+- R1 docs: install matrix decision (no `go install`), baseline create/update, container CI path, SARIF `always()` upload, soft-fail deps
+
+### Changed
+
+- Roadmap marks R0/R1 complete; residual risks updated for release + flake control
 
 ## [1.1.0] - 2026-07-29
 
@@ -31,6 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Restyled HTML reports; shared `test/fixtures/` corpus
 - Python / Maven / Cargo dependency parsers
 - Configurable scanner concurrency
+- GitHub Action `timeout` input (maps to `--timeout`)
+- Release workflow publishes GitHub binaries even when Docker Hub secrets are absent (`--skip=docker`)
 
 ### Changed
 
@@ -48,6 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Path-scoped sample skips; K8s bool-ish YAML; policy privileged init/ephemeral alignment
 - License/deps Supports honesty (no false Gemfile/Cargo claims)
 - Self-scan excludes intentional scanner pattern sources
+- `scripts/install.sh` parse error on extract (`find` parentheses broke `[[` parsing)
 
 ## [1.0.0] - 2026-07-12
 

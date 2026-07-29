@@ -30,6 +30,8 @@ scanners:
 
   dependencies:
     enabled: true
+    # fail_on_error defaults to true (OSV/network errors fail CI).
+    # Set false only to tolerate flaky networks; findings still apply fail_on.
     ignore_cves:
       # Indirect via OPA; openpgp subpackage is unmaintained — tracked upstream
       - GO-2026-5932
