@@ -58,3 +58,20 @@ func TestScanTimeoutDuration(t *testing.T) {
 		t.Fatal("expected invalid timeout error")
 	}
 }
+
+func TestDependenciesFailOnErrorDefault(t *testing.T) {
+	cfg := Default()
+	if !cfg.DependenciesFailOnError() {
+		t.Fatal("default should fail on dependency errors")
+	}
+	off := false
+	cfg.Scanners.Dependencies.FailOnError = &off
+	if cfg.DependenciesFailOnError() {
+		t.Fatal("expected fail_on_error=false to soft-skip")
+	}
+	on := true
+	cfg.Scanners.Dependencies.FailOnError = &on
+	if !cfg.DependenciesFailOnError() {
+		t.Fatal("expected fail_on_error=true to stay strict")
+	}
+}

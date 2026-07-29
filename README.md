@@ -61,9 +61,9 @@ Checked-in samples: [`docs/assets/demo/`](docs/assets/demo/).
 | **Clone + build** | Contributors | `git clone … && make build` |
 | **GitHub Action** | Pull requests | `delivery: docker` (external, after Hub publish) or `delivery: build` (this repo) |
 
-> **v1.1.0** ships GitHub Release binaries + `checksums.txt`. Docker Hub images publish when `DOCKER_USERNAME` / `DOCKER_PASSWORD` are set (see [docs/releasing.md](docs/releasing.md)).
+> **v1.1.0+** ships GitHub Release binaries + `checksums.txt`. Docker Hub images publish when `DOCKER_USERNAME` / `DOCKER_PASSWORD` are set (see [docs/releasing.md](docs/releasing.md)).
 >
-> `go install` is not advertised yet: the Go module path (`github.com/cozygarage/sentinelflow`) does not match the GitHub repo (`cozyGarage/sentielflow`).
+> **Install matrix:** binary / Docker / Action / `make build` only. `go install` is **not supported** (module path ≠ GitHub repo name).
 
 ### Build from source
 

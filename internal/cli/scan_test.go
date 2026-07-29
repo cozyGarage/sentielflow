@@ -152,9 +152,40 @@ func TestScannerErrorsFailsCI(t *testing.T) {
 			{Scanner: "dependencies", Error: "osv unavailable"},
 		},
 	}
-	err := scannerErrors(result)
+	err := scannerErrors(result, config.Default())
 	if err == nil {
 		t.Fatal("expected scanner error to fail the scan")
+	}
+}
+
+func TestScannerErrorsSoftDependencies(t *testing.T) {
+	off := false
+	cfg := config.Default()
+	cfg.Scanners.Dependencies.FailOnError = &off
+	result := &api.ScanResult{
+		ScannerRuns: []api.ScannerRun{
+			{Scanner: "dependencies", Error: "osv unavailable"},
+			{Scanner: "secrets", Error: "boom"},
+		},
+	}
+	err := scannerErrors(result, cfg)
+	if err == nil {
+		t.Fatal("expected secrets error to still fail")
+	}
+	if !strings.Contains(err.Error(), "secrets") {
+		t.Fatalf("expected secrets in error, got %v", err)
+	}
+	if strings.Contains(err.Error(), "dependencies") {
+		t.Fatalf("dependencies should be soft when fail_on_error=false, got %v", err)
+	}
+
+	result = &api.ScanResult{
+		ScannerRuns: []api.ScannerRun{
+			{Scanner: "dependencies", Error: "osv unavailable"},
+		},
+	}
+	if err := scannerErrors(result, cfg); err != nil {
+		t.Fatalf("expected soft deps error to be non-fatal, got %v", err)
 	}
 }
 

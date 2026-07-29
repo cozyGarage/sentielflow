@@ -68,6 +68,18 @@ type DependenciesConfig struct {
 	Severity   string   `yaml:"severity" mapstructure:"severity"`
 	IgnoreDev  bool     `yaml:"ignore_dev" mapstructure:"ignore_dev"`
 	IgnoreCVEs []string `yaml:"ignore_cves" mapstructure:"ignore_cves"`
+	// FailOnError fails the scan CLI when the dependencies scanner returns an
+	// error (e.g. OSV network blips). Default true. Set false to keep findings
+	// and report ScannerRun.Error without failing CI solely for transport errors.
+	FailOnError *bool `yaml:"fail_on_error" mapstructure:"fail_on_error"`
+}
+
+// DependenciesFailOnError returns whether dependency scanner errors should fail the CLI.
+func (c *Config) DependenciesFailOnError() bool {
+	if c.Scanners.Dependencies.FailOnError == nil {
+		return true
+	}
+	return *c.Scanners.Dependencies.FailOnError
 }
 
 // SASTConfig configures static application security testing

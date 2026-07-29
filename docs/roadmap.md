@@ -1,8 +1,6 @@
 # SentinelFlow Roadmap
 
-Post–audit baseline (`main` after #10–#14): multi-scanner gate is **trustworthy for CI dogfood**, delivery plumbing is ready, but **no published `v*` release** yet and several scanner surfaces remain intentionally thin.
-
-This roadmap orders work by leverage for a CI security gatekeeper—not by calendar estimates.
+Post–audit baseline on `main`: multi-scanner gate is trustworthy for CI dogfood; **R0** (`v1.1.0` binaries) and **R1** (productize) are done. Next leverage is scanner depth (R2), then platform (R3).
 
 ```mermaid
 flowchart LR
@@ -29,41 +27,36 @@ One binary / one Action that teams trust to **fail builds on real risk** without
 | Delivery hardening (Action env binding, install checksums, pinned GoReleaser) | Done (Wave 2) |
 | Scanner honesty / FN–FP hygiene (policy/IaC align, scoped skips, redact) | Done (Wave 3) |
 | CI unit tests + configurable `scan_timeout` | Done (#13/#14) |
-| First GitHub Release + Docker Hub image | **Not shipped** |
-| Module path = GitHub repo (`sentinelflow` vs `sentielflow`) | Deferred |
+| First GitHub Release binaries (`v1.1.0`) | Done (Hub images pending secrets) |
+| Install matrix decision (no `go install`) | Done (R1) |
+| Action `timeout`, deps `fail_on_error`, CI docs (container/baseline/SARIF) | Done (R1) |
 
 Residual detail: [audit-residual-risks.md](audit-residual-risks.md). Release steps: [releasing.md](releasing.md).
 
 ---
 
-## R0 — Ship the product (highest priority)
+## R0 — Ship the product ✅
 
-**Goal:** Advertised install paths work against a real tag.
-
-| Work | Why | Acceptance |
-| --- | --- | --- |
-| Confirm `DOCKER_USERNAME` / `DOCKER_PASSWORD` on the repo (optional for binaries) | Hub images; binaries ship without them | Secrets present **or** release uses `--skip=docker` |
-| Tag `v1.1.0` from current `main` | Unblocks `install.sh` (+ Docker when secrets exist) | GitHub Release + `checksums.txt` (+ Hub tags if configured) |
-| Verify install (+ Docker pull when published) | Prove the happy path | `VERSION=… ./scripts/install.sh`; optional `docker run … version` |
-| Point README/Action defaults at the tag (not only `:latest`) | Reproducible CI | Docs/examples use `v1.1.0` (or keep `:latest` with a note) |
-| Close the “until first release” story in README/CHANGELOG | Honest → shipped | Unreleased audit notes folded under the release section |
-
-**Out of R0:** module/repo rename (do in R1 if it blocks `go install` messaging).
+| Work | Status |
+| --- | --- |
+| Tag `v1.1.0` + binaries / checksums | Done |
+| Release works without Docker Hub secrets (`--skip=docker`) | Done |
+| Verify `install.sh` | Done (parse fix in #17) |
+| Fold audit notes into CHANGELOG | Done |
+| Docker Hub images | Blocked on secrets (optional) |
 
 ---
 
-## R1 — Productize the gate
+## R1 — Productize the gate ✅
 
-**Goal:** External repos adopt the Action without surprises; CI stays green under flaky deps.
-
-| Work | Why | Acceptance |
-| --- | --- | --- |
-| Align Go module path with GitHub repo **or** stop implying Go module install forever | Removes the last broken install claim | One clear install matrix (binary / Docker / Action / optional `go install`) |
-| Action: optional `timeout` input wired to `--timeout` | Parity with CLI | Documented; dogfood uses it if needed |
-| Soften OSV flake without false greens | Network blips red CI today | Config: e.g. `dependencies.fail_on_error` / retry / cache; default stays strict for security |
-| Container-in-Docker story | `scan-container` requires `delivery=build` | Documented path **or** Trivy-in-image / sidecar design spike |
-| Baseline UX polish | Teams need suppressions | `baseline` create/update docs + one Action example |
-| SARIF upload defaults in Action docs | GitHub code scanning consumers | Copy-paste workflow snippet that uploads on `always()` |
+| Work | Status |
+| --- | --- |
+| Stop implying `go install`; clear install matrix | Done |
+| Action `timeout` → `--timeout` | Done |
+| `scanners.dependencies.fail_on_error` (default strict) | Done |
+| Container-in-CI path documented (`delivery=build` + Trivy) | Done |
+| Baseline create/update + Action `use-baseline` docs | Done |
+| SARIF upload `if: always()` snippet | Done |
 
 ---
 
@@ -97,6 +90,7 @@ Residual detail: [audit-residual-risks.md](audit-residual-risks.md). Release ste
 | Plugin or custom rule packs (beyond Rego files) | Extensibility without forks | Documented extension point **or** “Rego-only” decision |
 | Signed releases (cosign) + Action pin-by-digest docs | Supply chain story | Cosign verify in install notes |
 | Performance budget on large repos | Real monorepos | Benchmark + documented guidance (concurrency, exclude) |
+| Docker Hub publish once secrets exist | Completes advertised `delivery: docker` for external repos | Hub tags on next `v*` release |
 
 ---
 
@@ -106,15 +100,16 @@ Residual detail: [audit-residual-risks.md](audit-residual-risks.md). Release ste
 - Full cloud CSPM (AWS/GCP live APIs)
 - Replacing Trivy with an in-house container CVE engine
 - Marketplace “AI autofix” without a scoped design
+- Advertising `go install` before a deliberate module/repo rename
 
 ---
 
 ## Suggested sequence
 
-1. **R0** — cut `v1.1.0` (unblocks everything else users see).
-2. **R1** — module-path decision + Action/timeout/OSV flake + container story.
+1. ~~**R0** — cut `v1.1.0`~~ done.
+2. ~~**R1** — install decision + timeout / OSV flake / CI docs~~ done.
 3. **R2** — license/deps/IaC/policy depth; remove self-scan exclude workaround for SAST patterns.
-4. **R3** — platform, signing, monorepo, identity.
+4. **R3** — platform, signing, monorepo, identity; Hub images when secrets land.
 
 Re-run the [audit loop](audit-residual-risks.md) after each release train; keep residual risks short and current.
 
@@ -127,5 +122,5 @@ Re-run the [audit loop](audit-residual-risks.md) after each release train; keep 
 | Self-scan (`scan --all --fail-on high`) | Exit 0 on `main` |
 | Unit + script CI | Required checks green |
 | Install path | `install.sh` verifies checksum against the new tag |
-| Action dogfood | External-style `delivery: docker` works against the release image |
+| Action dogfood | External-style `delivery: docker` works against the release image (when Hub published) |
 | Honesty | No README/Action claim for unimplemented scanners |

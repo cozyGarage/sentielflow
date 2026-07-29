@@ -11,7 +11,7 @@ SentinelFlow is designed to be simple yet powerful. This guide covers the most c
 | Install script | `curl -fsSL https://raw.githubusercontent.com/cozyGarage/sentielflow/main/scripts/install.sh \| bash` (verifies `checksums.txt`; pin with `VERSION=1.1.0`) |
 | Release binary | Download from [GitHub Releases](https://github.com/cozyGarage/sentielflow/releases) |
 
-`go install` is not supported until the module path matches the GitHub repo name (`sentinelflow` vs `sentielflow`). See [releasing.md](releasing.md).
+**Install decision:** use the install script, release binary, Docker, Action, or `make build`. `go install` is **not supported** (module path `github.com/cozygarage/sentinelflow` ≠ GitHub repo `cozyGarage/sentielflow`). Rename is deferred; do not advertise `go install`.
 
 Docker one-liner (local image):
 
@@ -136,9 +136,16 @@ sentinelflow hook uninstall
 
 ## Baselines
 
-Suppress known accepted findings during incremental adoption:
+Create or refresh a baseline from the current scan result, then filter on later scans:
 
 ```bash
+# Write .sentinelflow/baseline.yaml from today's findings
+sentinelflow baseline . -o .sentinelflow/baseline.yaml
+
+# Or regenerate after accepting new debt
+sentinelflow baseline . --output .sentinelflow/baseline.yaml
+
+# Apply filtering (CLI flag or config)
 sentinelflow scan --all --baseline
 ```
 
@@ -149,6 +156,8 @@ baseline:
   enabled: true
   file: .sentinelflow/baseline.yaml
 ```
+
+In GitHub Actions, set `use-baseline: 'true'` (requires the baseline file committed). See [cicd-integration.md](cicd-integration.md).
 
 ## Git History Secret Scanning
 
