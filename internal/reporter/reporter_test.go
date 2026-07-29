@@ -241,6 +241,27 @@ func TestSARIFFormatter(t *testing.T) {
 	}
 }
 
+func TestGenerateRedactsSecretSnippets(t *testing.T) {
+	result := createTestResult()
+	result.Findings[0].Location.Snippet = `aws_secret_access_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"`
+
+	rep := New(nil)
+	out, err := rep.Generate(result, "json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "wJalrXUtnFEMI") {
+		t.Fatalf("expected secret snippet redacted in JSON report, got snippet leak")
+	}
+	if !strings.Contains(out, "***REDACTED***") {
+		t.Fatal("expected redaction marker in report")
+	}
+	// Original result must remain unchanged for callers that keep findings in memory.
+	if !strings.Contains(result.Findings[0].Location.Snippet, "wJalrXUtnFEMI") {
+		t.Fatal("Generate should not mutate the caller's ScanResult snippets")
+	}
+}
+
 func TestEmptyResults(t *testing.T) {
 	result := &api.ScanResult{
 		Findings:    []api.Finding{},

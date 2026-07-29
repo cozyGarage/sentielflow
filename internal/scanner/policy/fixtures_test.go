@@ -14,11 +14,12 @@ func TestBuiltinPoliciesAgainstFixtures(t *testing.T) {
 		fixture string
 	}{
 		{"no-privileged-containers", "policy/k8s-privileged-pod.json"},
+		{"no-privileged-containers", "policy/k8s-privileged-init.json"},
 		{"no-public-s3-buckets", "policy/terraform-public-s3.json"},
 	}
 
 	for _, tc := range cases {
-		t.Run(tc.policy, func(t *testing.T) {
+		t.Run(tc.policy+"/"+tc.fixture, func(t *testing.T) {
 			builtin, err := policiespkg.Get(tc.policy)
 			if err != nil {
 				t.Fatalf("load builtin: %v", err)

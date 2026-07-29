@@ -21,3 +21,22 @@ func TestShouldSkipGlobSuffix(t *testing.T) {
 		t.Error("expected glob suffix match")
 	}
 }
+
+func TestIsBundledSampleDirScoped(t *testing.T) {
+	root := "/repo"
+	if !IsBundledSampleDir(root, "/repo/test/fixtures") {
+		t.Fatal("expected test/fixtures to be a bundled sample")
+	}
+	if !IsBundledSampleDir(root, "/repo/examples/demo-project") {
+		t.Fatal("expected examples/demo-project to be a bundled sample")
+	}
+	if IsBundledSampleDir(root, "/repo/pkg/fixtures") {
+		t.Fatal("arbitrary fixtures/ dir must not be skipped")
+	}
+	if IsBundledSampleDir(root, "/repo/demo-project") {
+		t.Fatal("demo-project outside examples/ must not be skipped")
+	}
+	if IsBundledSampleDir("/repo/test/fixtures", "/repo/test/fixtures") {
+		t.Fatal("scan root itself must not be skipped")
+	}
+}

@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cozygarage/sentinelflow/internal/scanner/filter"
 	"gopkg.in/yaml.v3"
 )
 
@@ -20,8 +21,8 @@ type policyInput struct {
 var skipDirs = map[string]bool{
 	".git": true, "node_modules": true, "vendor": true, ".terraform": true,
 	"__pycache__": true, ".venv": true, "dist": true, "build": true, ".cache": true,
-	// Intentional misconfig / secret samples used by unit tests and demos
-	"testdata": true, "fixtures": true, "demo-project": true,
+	// Go convention for local test assets
+	"testdata": true,
 }
 
 func collectPolicyInputs(root string) ([]policyInput, error) {
@@ -53,7 +54,7 @@ func collectKubernetesInputs(root string) ([]policyInput, error) {
 			return err
 		}
 		if info.IsDir() {
-			if skipDirs[info.Name()] && filepath.Clean(path) != root {
+			if filepath.Clean(path) != root && (skipDirs[info.Name()] || filter.IsBundledSampleDir(root, path)) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -130,7 +131,7 @@ func collectTerraformInput(root string) (*policyInput, error) {
 			return err
 		}
 		if info.IsDir() {
-			if skipDirs[info.Name()] && filepath.Clean(path) != root {
+			if filepath.Clean(path) != root && (skipDirs[info.Name()] || filter.IsBundledSampleDir(root, path)) {
 				return filepath.SkipDir
 			}
 			return nil

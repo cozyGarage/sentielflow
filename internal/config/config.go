@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
@@ -15,13 +16,14 @@ const AINotAvailableMessage = "AI-powered code review is not available in this r
 
 // Config represents the SentinelFlow configuration
 type Config struct {
-	Version   string         `yaml:"version" mapstructure:"version"`
-	Scanners  ScannersConfig `yaml:"scanners" mapstructure:"scanners"`
-	Policies  PoliciesConfig `yaml:"policies" mapstructure:"policies"`
-	Reporting ReportConfig   `yaml:"reporting" mapstructure:"reporting"`
-	FailOn    FailOnConfig   `yaml:"fail_on" mapstructure:"fail_on"`
-	Git       GitConfig      `yaml:"git" mapstructure:"git"`
-	Baseline  BaselineConfig `yaml:"baseline" mapstructure:"baseline"`
+	Version      string         `yaml:"version" mapstructure:"version"`
+	ScanTimeout  string         `yaml:"scan_timeout" mapstructure:"scan_timeout"` // e.g. "10m", "90s"
+	Scanners     ScannersConfig `yaml:"scanners" mapstructure:"scanners"`
+	Policies     PoliciesConfig `yaml:"policies" mapstructure:"policies"`
+	Reporting    ReportConfig   `yaml:"reporting" mapstructure:"reporting"`
+	FailOn       FailOnConfig   `yaml:"fail_on" mapstructure:"fail_on"`
+	Git          GitConfig      `yaml:"git" mapstructure:"git"`
+	Baseline     BaselineConfig `yaml:"baseline" mapstructure:"baseline"`
 }
 
 // ScannersConfig contains settings for all scanners
@@ -160,7 +162,8 @@ func Load() (*Config, error) {
 // Default returns the default configuration
 func Default() *Config {
 	return &Config{
-		Version: "1.0",
+		Version:     "1.0",
+		ScanTimeout: "10m",
 		Scanners: ScannersConfig{
 			Concurrency: 8,
 			Exclude: []string{
@@ -304,6 +307,25 @@ func (c *Config) Validate() error {
 	if c.Scanners.AI.Enabled {
 		return fmt.Errorf("%s", AINotAvailableMessage)
 	}
+	if _, err := c.ScanTimeoutDuration(); err != nil {
+		return err
+	}
 
 	return nil
+}
+
+// ScanTimeoutDuration parses scan_timeout (default 10m).
+func (c *Config) ScanTimeoutDuration() (time.Duration, error) {
+	raw := strings.TrimSpace(c.ScanTimeout)
+	if raw == "" {
+		return 10 * time.Minute, nil
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, fmt.Errorf("invalid scan_timeout %q (use Go duration, e.g. 10m, 90s)", c.ScanTimeout)
+	}
+	if d <= 0 {
+		return 0, fmt.Errorf("scan_timeout must be > 0")
+	}
+	return d, nil
 }

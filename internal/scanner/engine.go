@@ -181,8 +181,8 @@ func (e *Engine) collectFiles(ctx context.Context, targetPath string) ([]string,
 				name == "dist" || name == "build" || name == ".cache" {
 				return filepath.SkipDir
 			}
-			// Skip sample trees nested inside a larger scan target (not when they ARE the target).
-			if path != targetPath && (name == "testdata" || name == "fixtures" || name == "demo-project") {
+			// Skip Go testdata and bundled sample trees (path-scoped, not bare name matches).
+			if path != targetPath && (name == "testdata" || filter.IsBundledSampleDir(targetPath, path)) {
 				return filepath.SkipDir
 			}
 			return nil

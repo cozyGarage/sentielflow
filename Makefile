@@ -3,9 +3,9 @@
 BINARY_NAME=sentinelflow
 DOCKER_IMAGE=sentinelflow/sentinelflow:latest
 
-.PHONY: all build test bench clean docker-build run demo
+.PHONY: all build test test-scripts bench clean docker-build run demo
 
-all: test build
+all: test test-scripts build
 
 build:
 	@echo "Building SentinelFlow..."
@@ -14,6 +14,12 @@ build:
 test:
 	@echo "Running unit tests..."
 	go test -v ./...
+
+test-scripts:
+	@echo "Running shell helper tests..."
+	@chmod +x ./scripts/install_checksum_test.sh ./scripts/count-findings.sh
+	./scripts/install_checksum_test.sh
+	@tmp=$$(mktemp); echo '{}' > "$$tmp"; test "$$(./scripts/count-findings.sh json "$$tmp")" = "0"; rm -f "$$tmp"
 
 integration:
 	@echo "Running integration tests..."

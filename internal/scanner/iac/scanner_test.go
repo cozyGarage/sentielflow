@@ -305,6 +305,30 @@ spec:
 	}
 }
 
+func TestKubernetesBoolishPrivileged(t *testing.T) {
+	dir := t.TempDir()
+	manifest := `apiVersion: v1
+kind: Pod
+metadata:
+  name: p
+spec:
+  containers:
+  - name: app
+    image: nginx:1.25
+    securityContext:
+      privileged: "true"
+      runAsNonRoot: true
+`
+	filePath := writeTempFile(t, dir, "boolish.yaml", manifest)
+	findings := NewKubernetesScanner(&config.Config{}).ScanFile(context.Background(), filePath, dir)
+	for _, f := range findings {
+		if f.RuleID == "k8s-privileged" {
+			return
+		}
+	}
+	t.Fatal("expected privileged finding when privileged: \"true\" (string)")
+}
+
 func TestDockerfileFinalStageUser(t *testing.T) {
 	dir := t.TempDir()
 

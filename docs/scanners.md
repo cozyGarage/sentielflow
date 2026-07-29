@@ -93,7 +93,12 @@ Wraps [Trivy](https://github.com/aquasecurity/trivy) when installed. Enable with
 
 ## 6. License Scanner (`internal/scanner/license`)
 
-Parses dependency manifests and flags packages whose licenses match the denied list (default includes GPL-3.0, AGPL-3.0, SSPL-1.0).
+Checks `package.json` and `go.mod` only. Flags:
+
+- Licenses on the **denied** list (default GPL-3.0, AGPL-3.0, SSPL-1.0), and
+- Licenses **not** on `scanners.license.allowed` when that list is non-empty.
+
+Transitive dependency licenses come from a **small hardcoded map** (not a full license DB or SBOM). Unknown packages are not flagged. Cargo/Ruby manifests are not scanned.
 
 ---
 
@@ -112,7 +117,7 @@ The engine embeds Open Policy Agent. At scan time it:
 | Policy | Description |
 | --- | --- |
 | `no-public-s3-buckets` | Blocks public S3 ACLs and missing public access blocks |
-| `no-privileged-containers` | Denies privileged K8s containers and missing `runAsNonRoot` |
+| `no-privileged-containers` | Denies privileged K8s containers (app/init/ephemeral) and missing `runAsNonRoot` |
 | `require-https` | Ensures TLS on ingress and load balancers |
 | `enforce-encryption` | Requires encryption at rest for S3, RDS, EBS, EFS |
 

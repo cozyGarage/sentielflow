@@ -31,6 +31,7 @@ var (
 	failOnSeverity   string
 	containerImage   string
 	useBaseline      bool
+	scanTimeoutFlag  string
 )
 
 var scanCmd = &cobra.Command{
@@ -65,6 +66,7 @@ func init() {
 	scanCmd.Flags().BoolVar(&scanLicense, "license", false, "check dependency licenses")
 	scanCmd.Flags().StringVar(&containerImage, "container-image", "", "container image to scan")
 	scanCmd.Flags().BoolVar(&useBaseline, "baseline", false, "apply baseline filtering")
+	scanCmd.Flags().StringVar(&scanTimeoutFlag, "timeout", "", "scan deadline (Go duration, e.g. 10m, 90s); overrides scan_timeout")
 	scanCmd.Flags().BoolVar(&scanAI, "ai", false, "AI-powered code review (not available in this release)")
 	scanCmd.Flags().BoolVar(&scanAll, "all", false, "enable secrets, iac, deps, sast, and license (not container/AI)")
 	scanCmd.Flags().StringVarP(&outputFile, "output", "o", "", "output file path")
@@ -121,12 +123,20 @@ func runScan(cmd *cobra.Command, args []string) error {
 	// Print scan header
 	printScanHeader(absPath, cfg)
 
+	timeout, err := cfg.ScanTimeoutDuration()
+	if err != nil {
+		return fmt.Errorf("invalid configuration: %w", err)
+	}
+
 	// Run scan with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	result, err := engine.Scan(ctx, absPath)
 	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return fmt.Errorf("scan timed out after %s: %w", timeout, err)
+		}
 		return fmt.Errorf("scan failed: %w", err)
 	}
 
@@ -203,6 +213,10 @@ func applyScanFlags(cfg *config.Config) error {
 
 	if useBaseline {
 		cfg.Baseline.Enabled = true
+	}
+
+	if scanTimeoutFlag != "" {
+		cfg.ScanTimeout = scanTimeoutFlag
 	}
 
 	// Override fail-on severity
