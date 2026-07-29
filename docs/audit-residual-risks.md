@@ -6,7 +6,7 @@ Re-audit after correctness, delivery, and scanner-quality waves. Unit tests gree
 
 | Area | Risk | Notes |
 | --- | --- | --- |
-| Release cut | First `v*` tag pending | Binaries can ship without Docker Hub (`--skip=docker`). Tag `v1.1.0` after release-ready PR lands. |
+| Release cut | `v1.1.0` published (binaries + checksums) | Docker Hub skipped (no secrets). Add Hub secrets and re-tag or cut `v1.1.1` for images. |
 | Module path | `go install` unsupported | Module `github.com/cozygarage/sentinelflow` ≠ repo `cozyGarage/sentielflow`. Rename deferred. |
 | License scanner | High FN rate by design | Hardcoded license map; no SBOM. Documented; not a full license gate. |
 | Dependencies | No Ruby/Gemfile parsing | `Supports` honest; Ruby still unsupported. |

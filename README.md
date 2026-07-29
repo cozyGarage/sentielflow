@@ -56,12 +56,12 @@ Checked-in samples: [`docs/assets/demo/`](docs/assets/demo/).
 
 | Method | Best for | How |
 | --- | --- | --- |
-| **Clone + build** | Contributors / today | `git clone … && make build` |
-| **Docker** | CI & tryouts (after image publish) | `docker build -t sentinelflow/sentinelflow:local .` or pull a release tag |
-| **Install script** | Laptops (after first `v*` release) | `curl -fsSL …/scripts/install.sh \| bash` |
-| **GitHub Action** | Pull requests | `delivery: docker` (external) or `delivery: build` (this repo) |
+| **Install script** | Laptops | `curl -fsSL …/scripts/install.sh \| bash` (verifies checksums) |
+| **Docker** | CI & tryouts | `docker build -t sentinelflow/sentinelflow:local .` — Hub tags when Docker credentials are configured on release |
+| **Clone + build** | Contributors | `git clone … && make build` |
+| **GitHub Action** | Pull requests | `delivery: docker` (external, after Hub publish) or `delivery: build` (this repo) |
 
-> Release binaries and Docker Hub tags are published by GoReleaser on `v*` tags (see [docs/releasing.md](docs/releasing.md)). Until a release is published, use **clone + `make build`** or **`docker build`**.
+> **v1.1.0** ships GitHub Release binaries + `checksums.txt`. Docker Hub images publish when `DOCKER_USERNAME` / `DOCKER_PASSWORD` are set (see [docs/releasing.md](docs/releasing.md)).
 >
 > `go install` is not advertised yet: the Go module path (`github.com/cozygarage/sentinelflow`) does not match the GitHub repo (`cozyGarage/sentielflow`).
 
@@ -92,8 +92,8 @@ Compose helpers: [`docker-compose.yml`](docker-compose.yml) (`scan-html`, `scan-
 ### Release binary
 
 ```bash
-# Requires a published GitHub Release
 curl -fsSL https://raw.githubusercontent.com/cozyGarage/sentielflow/main/scripts/install.sh | bash
+# or pin: VERSION=1.1.0 ./scripts/install.sh
 ./bin/sentinelflow version
 ```
 
