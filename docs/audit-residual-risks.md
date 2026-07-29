@@ -6,7 +6,7 @@ Re-audit after correctness, delivery, and scanner-quality waves. Unit tests gree
 
 | Area | Risk | Notes |
 | --- | --- | --- |
-| Release cut | First `v*` tag not published from this cycle | Needs Waves merged to `main` + `DOCKER_USERNAME` / `DOCKER_PASSWORD`. See [releasing.md](releasing.md). |
+| Release cut | First `v*` tag not published | Waves 1–3 are on `main`. Still needs `DOCKER_USERNAME` / `DOCKER_PASSWORD`, then tag per [releasing.md](releasing.md). |
 | Module path | `go install` unsupported | Module `github.com/cozygarage/sentinelflow` ≠ repo `cozyGarage/sentielflow`. Rename deferred. |
 | License scanner | High FN rate by design | Hardcoded license map; no SBOM. Documented; not a full license gate. |
 | Dependencies | No Ruby/Gemfile parsing | `Supports` honest; Ruby still unsupported. |
@@ -20,7 +20,7 @@ Re-audit after correctness, delivery, and scanner-quality waves. Unit tests gree
 
 ## Landed since original residual note
 
-- Wave 2–3 content retargeted to `main` (prior #11 merged into a non-main base).
+- Waves 1–3 on `main` (#10, #13; Wave 2 was re-landed after a non-main base merge).
 - CI unit-test workflow (`.github/workflows/ci.yml`) + `make test-scripts`.
 - Configurable scan deadline: `scan_timeout` / `--timeout`.
 
