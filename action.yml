@@ -67,6 +67,10 @@ inputs:
     description: Directory to scan
     required: false
     default: '.'
+  timeout:
+    description: Scan deadline (Go duration, e.g. 10m, 90s); empty uses scan_timeout / default 10m
+    required: false
+    default: ''
 
 outputs:
   findings-count:
@@ -138,6 +142,7 @@ runs:
         SF_FORMAT: ${{ inputs.format }}
         SF_OUTPUT: ${{ inputs.output }}
         SF_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        SF_TIMEOUT: ${{ inputs.timeout }}
         SF_WORKSPACE: ${{ github.workspace }}
         SF_ACTION_PATH: ${{ github.action_path }}
       run: |
@@ -162,6 +167,10 @@ runs:
 
         if [ "${SF_USE_BASELINE}" = "true" ]; then
           ARGS+=(--baseline)
+        fi
+
+        if [ -n "${SF_TIMEOUT}" ]; then
+          ARGS+=(--timeout "${SF_TIMEOUT}")
         fi
 
         OUT_PATH="${SF_WORKSPACE}/${SF_OUTPUT}"

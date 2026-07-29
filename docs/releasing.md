@@ -1,21 +1,18 @@
 # Releasing SentinelFlow
 
-GoReleaser publishes GitHub Release assets (`checksums.txt` + platform archives) and Docker Hub images when a `v*` tag is pushed.
+GoReleaser publishes GitHub Release assets (`checksums.txt` + platform archives) on `v*` tags. Docker Hub images are published **when** `DOCKER_USERNAME` / `DOCKER_PASSWORD` are set; otherwise the workflow uses `--skip=docker` so binaries still ship.
 
 ## Prerequisites
 
-Repository secrets (Settings → Secrets and variables → Actions):
+| Secret | Required? | Purpose |
+| --- | --- | --- |
+| `GITHUB_TOKEN` | Automatic | Create GitHub Release + upload assets |
+| `DOCKER_USERNAME` | Optional | Docker Hub username for `sentinelflow/sentinelflow` |
+| `DOCKER_PASSWORD` | Optional | Docker Hub access token (or password) |
 
-| Secret | Purpose |
-| --- | --- |
-| `DOCKER_USERNAME` | Docker Hub username with push access to `sentinelflow/sentinelflow` |
-| `DOCKER_PASSWORD` | Docker Hub access token (or password) |
-
-The release workflow (`.github/workflows/release.yml`) pins `goreleaser/goreleaser-action@v6.3.0` and GoReleaser CLI `v2.9.0`.
+Pinned tooling: `goreleaser/goreleaser-action@v6.3.0` + GoReleaser CLI `v2.9.0`.
 
 ## Cut a release
-
-After Wave 1–2 correctness/delivery changes are on `main`:
 
 ```bash
 git checkout main
@@ -27,7 +24,7 @@ git push origin v1.1.0
 Watch the **Release** workflow. On success:
 
 - GitHub Release `v1.1.0` includes binaries + `checksums.txt`
-- Images: `sentinelflow/sentinelflow:v1.1.0`, `:v1`, `:v1.1`, `:latest`
+- If Docker Hub secrets are present: `sentinelflow/sentinelflow:v1.1.0`, `:v1`, `:v1.1`, `:latest`
 - Install path: `curl -fsSL …/scripts/install.sh | bash` (verifies checksums)
 
 ## Verify
@@ -36,6 +33,7 @@ Watch the **Release** workflow. On success:
 VERSION=1.1.0 ./scripts/install.sh
 ./bin/sentinelflow version
 
+# Only if Docker Hub publish ran:
 docker pull sentinelflow/sentinelflow:v1.1.0
 docker run --rm sentinelflow/sentinelflow:v1.1.0 version
 ```

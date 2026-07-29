@@ -42,9 +42,9 @@ Residual detail: [audit-residual-risks.md](audit-residual-risks.md). Release ste
 
 | Work | Why | Acceptance |
 | --- | --- | --- |
-| Confirm `DOCKER_USERNAME` / `DOCKER_PASSWORD` on the repo | Release workflow publishes Hub images | Secrets present; dry-run login OK |
-| Tag `v1.1.0` (or `v1.0.1`) from current `main` | Unblocks `install.sh` + `delivery: docker` | GitHub Release + `checksums.txt` + Hub tags |
-| Verify install + Docker pull | Prove the happy path | `VERSION=… ./scripts/install.sh`; `docker run … version` |
+| Confirm `DOCKER_USERNAME` / `DOCKER_PASSWORD` on the repo (optional for binaries) | Hub images; binaries ship without them | Secrets present **or** release uses `--skip=docker` |
+| Tag `v1.1.0` from current `main` | Unblocks `install.sh` (+ Docker when secrets exist) | GitHub Release + `checksums.txt` (+ Hub tags if configured) |
+| Verify install (+ Docker pull when published) | Prove the happy path | `VERSION=… ./scripts/install.sh`; optional `docker run … version` |
 | Point README/Action defaults at the tag (not only `:latest`) | Reproducible CI | Docs/examples use `v1.1.0` (or keep `:latest` with a note) |
 | Close the “until first release” story in README/CHANGELOG | Honest → shipped | Unreleased audit notes folded under the release section |
 
