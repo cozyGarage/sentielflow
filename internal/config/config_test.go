@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestValidateRejectsInvalidSeverity(t *testing.T) {
 	cfg := Default()
@@ -36,5 +39,22 @@ func TestValidateNormalizesFailOnSeverity(t *testing.T) {
 	}
 	if cfg.FailOn.Severity != "high" {
 		t.Fatalf("expected normalized severity high, got %q", cfg.FailOn.Severity)
+	}
+}
+
+func TestScanTimeoutDuration(t *testing.T) {
+	cfg := Default()
+	d, err := cfg.ScanTimeoutDuration()
+	if err != nil || d != 10*time.Minute {
+		t.Fatalf("default timeout: got %v %v", d, err)
+	}
+	cfg.ScanTimeout = "90s"
+	d, err = cfg.ScanTimeoutDuration()
+	if err != nil || d != 90*time.Second {
+		t.Fatalf("90s timeout: got %v %v", d, err)
+	}
+	cfg.ScanTimeout = "nope"
+	if _, err := cfg.ScanTimeoutDuration(); err == nil {
+		t.Fatal("expected invalid timeout error")
 	}
 }

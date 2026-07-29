@@ -18,10 +18,17 @@ Re-audit after correctness, delivery, and scanner-quality waves. Unit tests gree
 | Policy vs IaC | Remaining Rego gaps | e.g. some workload kinds / stringly YAML edge cases may still diverge. |
 | Redaction | Heuristic, not cryptographic | Reporter + secrets redact patterns; novel secret formats may still leak in snippets. |
 
+## Landed since original residual note
+
+- Wave 2–3 content retargeted to `main` (prior #11 merged into a non-main base).
+- CI unit-test workflow (`.github/workflows/ci.yml`) + `make test-scripts`.
+- Configurable scan deadline: `scan_timeout` / `--timeout`.
+
 ## Optional follow-ups (not blockers)
 
 - CloudFormation rule engine
 - AI code review
-- Configurable scan timeout / OSV worker pool
+- OSV worker pool / rate limit
 - Full Go module + GitHub repo rename
 - Expand license DB or integrate SBOM license check
+- First `v1.1.0` tag after Docker Hub secrets are confirmed

@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Release runbook [`docs/releasing.md`](docs/releasing.md) (Docker Hub secrets + tag cut)
 - License `allowed` list enforcement; redact unit tests + reporter defense-in-depth
 - Post-audit residual risk note: [`docs/audit-residual-risks.md`](docs/audit-residual-risks.md)
+- CI unit-test workflow (`.github/workflows/ci.yml`) and `make test-scripts`
+- Configurable scan deadline (`scan_timeout` / `--timeout`)
 - Visual demo README with screenshots, `examples/demo-project`, and `make demo` / `scripts/demo.sh`
 - `scripts/install.sh` one-liner installer for GitHub Release binaries
 - GitHub Action `delivery: docker` (default) and `delivery: build` (same-repo dogfood)

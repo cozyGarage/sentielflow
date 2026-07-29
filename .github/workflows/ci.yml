@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Go test
+        run: go test ./...
+
+      - name: Install checksum helper test
+        run: bash scripts/install_checksum_test.sh
+
+      - name: Findings count helper (pipefail / zero matches)
+        run: |
+          set -euo pipefail
+          echo '{}' > /tmp/empty.json
+          test "$(bash scripts/count-findings.sh json /tmp/empty.json)" = "0"
+          echo '{"severity":"high","severity":"low"}' > /tmp/two.json
+          test "$(bash scripts/count-findings.sh json /tmp/two.json)" = "2"

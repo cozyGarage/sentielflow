@@ -9,6 +9,7 @@ Run `sentinelflow init` to generate a starter configuration.
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `version` | string | `"1.0"` | Configuration schema version |
+| `scan_timeout` | string | `"10m"` | Overall scan deadline (Go duration). Overridable with `--timeout` |
 
 ## Scanners
 

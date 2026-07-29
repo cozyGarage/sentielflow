@@ -88,11 +88,13 @@ Control when the process exits with code `1` (for CI gates):
 ```bash
 # Fail on critical or high severity findings
 sentinelflow scan --all --fail-on high
+sentinelflow scan --all --timeout 15m
 
 # Fail only on critical
 sentinelflow scan --all --fail-on critical
 ```
 
+CLI `--timeout` overrides `scan_timeout` in `.sentinelflow.yaml` (default `10m`).
 Accepted `--fail-on` values: `critical`, `high`, `medium`, `low`. Each level includes all severities above it.
 
 Additional gates are configured in `.sentinelflow.yaml`:
