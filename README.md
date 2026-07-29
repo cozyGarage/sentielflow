@@ -61,7 +61,7 @@ Checked-in samples: [`docs/assets/demo/`](docs/assets/demo/).
 | **Clone + build** | Contributors | `git clone … && make build` |
 | **GitHub Action** | Pull requests | `delivery: docker` (external, after Hub publish) or `delivery: build` (this repo) |
 
-> **v1.1.0+** ships GitHub Release binaries + `checksums.txt`. Docker Hub images publish when `DOCKER_USERNAME` / `DOCKER_PASSWORD` are set (see [docs/releasing.md](docs/releasing.md)).
+> **v1.1.1** ships GitHub Release binaries + `checksums.txt`. Docker Hub images publish when `DOCKER_USERNAME` / `DOCKER_PASSWORD` are set (see [docs/releasing.md](docs/releasing.md)).
 >
 > **Install matrix:** binary / Docker / Action / `make build` only. `go install` is **not supported** (module path ≠ GitHub repo name).
 
@@ -93,7 +93,7 @@ Compose helpers: [`docker-compose.yml`](docker-compose.yml) (`scan-html`, `scan-
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/cozyGarage/sentielflow/main/scripts/install.sh | bash
-# or pin: VERSION=1.1.0 ./scripts/install.sh
+# or pin: VERSION=1.1.1 ./scripts/install.sh
 ./bin/sentinelflow version
 ```
 
