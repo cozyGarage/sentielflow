@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `scripts/install.sh` parse error on extract (`find` parentheses broke `[[` parsing)
+
 ### Added
 
 - GitHub Action `timeout` input (maps to `--timeout`)

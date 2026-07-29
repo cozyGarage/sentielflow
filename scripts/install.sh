@@ -119,7 +119,7 @@ if [[ "${SKIP_CHECKSUM}" != "1" ]]; then
 fi
 
 mkdir -p "${INSTALL_DIR}"
-if [[ "${EXT}" == "zip" ]; then
+if [[ "${EXT}" == "zip" ]]; then
   if command -v unzip >/dev/null 2>&1; then
     unzip -qo "${TMP}/${ASSET}" -d "${TMP}/extract"
   else
@@ -131,7 +131,10 @@ else
   tar -xzf "${TMP}/${ASSET}" -C "${TMP}/extract"
 fi
 
-BIN_SRC="$(find "${TMP}/extract" -type f \( -name sentinelflow -o -name sentinelflow.exe \) | head -n1)"
+BIN_SRC="$(find "${TMP}/extract" -type f -name 'sentinelflow' | head -n1)"
+if [[ -z "${BIN_SRC}" ]]; then
+  BIN_SRC="$(find "${TMP}/extract" -type f -name 'sentinelflow.exe' | head -n1)"
+fi
 if [[ -z "${BIN_SRC}" ]]; then
   echo "sentinelflow binary not found in archive" >&2
   exit 1
