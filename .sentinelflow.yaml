@@ -1,5 +1,7 @@
 version: "1.0"
 
+scan_timeout: 10m
+
 scanners:
   # Global path skips (all scanners / shared engine walk).
   # Secrets-only noise belongs under scanners.secrets.allowlist.

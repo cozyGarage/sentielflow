@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Primary install story is clone/`make build` until the first `v*` release publishes binaries and Docker Hub tags
+- `sentinelflow init` starter config includes `scan_timeout` and `scanners.exclude`
 - GitHub Action inputs bound via `env` (no shell interpolation of `container-image` / `output` / etc.)
 - Release workflow pins `goreleaser-action@v6.3.0` and GoReleaser `v2.9.0` (not `latest`)
 - Docs clarify `go install` is unsupported until module path matches the GitHub repo
